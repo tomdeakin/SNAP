@@ -578,7 +578,10 @@ void set_sweep_cell_args(void)
 // Kernel: cell
 // Work-group: energy group
 // Work-item: angle
-void enqueue_octant(const unsigned int timestep, const unsigned int oct, const unsigned int ndiag, const plane *planes)
+
+#define dag(i,j,k) dag[(i)+(nx*(j))+(nx*ny*(k))]
+
+void enqueue_octant(const unsigned int timestep, const unsigned int oct, const unsigned int ndiag, const plane *planes, cl_event *dag)
 {
     // Determine the cell step parameters for the given octant
     // Create the list of octant co-ordinates in order
@@ -636,16 +639,6 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
     // Loop over the diagonal wavefronts
     for (unsigned int d = 0; d < ndiag; d++)
     {
-        for (int q = 0; q < NUM_QUEUES; q++)
-        {
-            if (last_event > 0)
-            {
-                // Enqueue wait on the last event on each queue (in order queue)
-                int min = (planes[d-1].num_cells < NUM_QUEUES) ? planes[d-1].num_cells : NUM_QUEUES;
-                err = clEnqueueWaitForEvents(queue[q], min, events+last_event-min);
-                check_error(err, "Enqueue wait for events between wavefront");
-            }
-        }
         // Loop through the list of cells in this plane
         for (unsigned int l = 0; l < planes[d].num_cells; l++)
         {
@@ -666,16 +659,43 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
             err |= clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 2, sizeof(unsigned int), &k);
             check_error(err, "Setting sweep_cell kernel args cell positions");
 
+            // Calculate downwind dependancy
+            cl_event downwind[3] = {0,0,0};
+            int num_downwind = 0;
+            if (i - istep >= 0 && i - istep < nx)
+            {
+                num_downwind += 1;
+                downwind[num_downwind-1] = dag(i-istep,j,k);
+            }
+            if (j - jstep >= 0 && j - jstep < ny)
+            {
+                num_downwind += 1;
+                downwind[num_downwind-1] = dag(i,j-jstep,k);
+
+            }
+            if (k - kstep >= 0 && k - kstep < nz)
+            {
+                num_downwind += 1;
+                downwind[num_downwind-1] = dag(i,j,k-kstep);
+
+            }
+
             // Enqueue the kernel
-            err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 2, 0, global, NULL, 0, NULL, &events[last_event+l]);
+            if (num_downwind == 0)
+                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 2, 0, global, NULL, 0, NULL, &dag(i,j,k));
+            else
+                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 2, 0, global, NULL, num_downwind, downwind, &dag(i,j,k));
             check_error(err, "Enqueue sweep_cell kernel");
         }
         last_event += planes[d].num_cells;
     }
     // Decrement the reference counters so the API can bin these events
     for (int e = 0; e < nx*ny*nz; e++)
-        clReleaseEvent(events[e]);
-
+    {
+        //err = clReleaseEvent(events[e]);
+        err = clReleaseEvent(dag[e]);
+        check_error(err, "Releasing event");
+    }
 }
 
 // Perform a sweep over the grid for all the octants
@@ -698,10 +718,13 @@ void ocl_sweep_(void)
     t2 = omp_get_wtime();
     printf("setting args took %lfs\n", t2-t1);
 
+    // Create the array for the Event DAG
+    cl_event *dag = (cl_event *)calloc(sizeof(cl_event),nx*ny*nz);
+
     for (int o = 0; o < noct; o++)
     {
         t1 = omp_get_wtime();
-        enqueue_octant(global_timestep, o, ndiag, planes);
+        enqueue_octant(global_timestep, o, ndiag, planes, dag);
         t2 = omp_get_wtime();
         printf("octant %d enqueue took %lfs\n", o, t2-t1);
         zero_edge_flux_buffers_();
