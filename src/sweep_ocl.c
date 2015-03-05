@@ -390,9 +390,17 @@ void copy_to_device_(
 
     d_total_cross_section = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(double)*nx*ny*nz*ng, NULL, &err);
     check_error(err, "Creating total_cross_section buffer");
-    err = clEnqueueWriteBuffer(queue[0], d_total_cross_section, CL_FALSE, 0, sizeof(double)*nx*ny*nz*ng, total_cross_section, 0, NULL, NULL);
-    check_error(err, "Copying total_cross_section buffer");
 
+    // Reorder the memory layout before copy
+    double *tmp = (double *)malloc(sizeof(double)*nx*ny*nz*ng);
+    for (unsigned int i = 0; i < nx; i++)
+        for (unsigned int j = 0; j < ny; j++)
+            for (unsigned int k = 0; k < nz; k++)
+                for (unsigned int g = 0; g < ng; g++)
+                    tmp[g+(ng*i)+(ng*nx*j)+(ng*nx*ny*k)] = total_cross_section[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*g)];
+    err = clEnqueueWriteBuffer(queue[0], d_total_cross_section, CL_FALSE, 0, sizeof(double)*nx*ny*nz*ng, tmp, 0, NULL, NULL);
+    check_error(err, "Copying total_cross_section buffer");
+    free(tmp);
 
     d_weights = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(double)*nang, NULL, &err);
     check_error(err, "Creating weights buffer");
@@ -432,8 +440,18 @@ void copy_source_to_device_(double *source)
 void copy_denom_to_device_(double *denom)
 {
     cl_int err;
-    err = clEnqueueWriteBuffer(queue[0], d_denom, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*ng, denom, 0, NULL, NULL);
+    double *tmp = (double *)malloc(sizeof(double)*nang*ng*nx*ny*nz);
+    // Transpose the denominator from the original SNAP format
+    for (int a = 0; a < nang; a++)
+        for (int g = 0; g < ng; g++)
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < ny; j++)
+                    for (int k = 0; k < nz; k++)
+                        tmp[a+(nang*g)+(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)] = denom[a+(nang*i)+(nang*nx*j)+(nang*nx*ny*k)+(nang*nx*ny*nz*g)];
+
+    err = clEnqueueWriteBuffer(queue[0], d_denom, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*ng, tmp, 0, NULL, NULL);
     check_error(err, "Copying denom buffer");
+    free(tmp);
 
 }
 
@@ -609,7 +627,7 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
 
     cl_int err;
 
-    const size_t global[2] = {nang, ng};
+    const size_t global[1] = {nang * ng};
 
     for (int qq = 0; qq < NUM_QUEUES; qq++)
     {
@@ -682,9 +700,9 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
 
             // Enqueue the kernel
             if (num_downwind == 0)
-                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 2, 0, global, NULL, 0, NULL, &dag(i,j,k));
+                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 1, 0, global, NULL, 0, NULL, &dag(i,j,k));
             else
-                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 2, 0, global, NULL, num_downwind, downwind, &dag(i,j,k));
+                err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 1, 0, global, NULL, num_downwind, downwind, &dag(i,j,k));
             check_error(err, "Enqueue sweep_cell kernel");
         }
         last_event += planes[d].num_cells;
@@ -746,12 +764,23 @@ void ocl_sweep_(void)
 // Copy the flux_out buffer back to the host
 void get_output_flux_(double* flux_out)
 {
+    double *tmp = calloc(sizeof(double),nang*ng*nx*ny*nz*noct);
     cl_int err;
     if (global_timestep % 2 == 0)
-        err = clEnqueueReadBuffer(queue[0], d_flux_out, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, flux_out, 0, NULL, NULL);
+        err = clEnqueueReadBuffer(queue[0], d_flux_out, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
     else
-        err = clEnqueueReadBuffer(queue[0], d_flux_in, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, flux_out, 0, NULL, NULL);
+        err = clEnqueueReadBuffer(queue[0], d_flux_in, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
     check_error(err, "Reading d_flux_out");
+
+    // Transpose the data into the original SNAP format
+    for (int a = 0; a < nang; a++)
+        for (int g = 0; g < ng; g++)
+            for (int i = 0; i < nx; i++)
+                for (int j = 0; j < ny; j++)
+                    for (int k = 0; k < nz; k++)
+                        for (int o = 0; o < noct; o++)
+                            flux_out[a+(nang*i)+(nang*nx*j)+(nang*nx*ny*k)+(nang*nx*ny*nz*o)+(nang*nx*ny*nz*noct*g)] = tmp[a+(nang*g)+(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)];
+    free(tmp);
 }
 
 // Enqueue the kernel to reduce the angular flux to the scalar flux
