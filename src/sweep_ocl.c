@@ -15,7 +15,7 @@
 #include "sweep_kernels.h"
 
 
-#define NUM_QUEUES 4
+#define NUM_QUEUES 1
 
 
 // Global OpenCL handles (context, queue, etc.)
@@ -44,6 +44,17 @@ cl_mem d_time_delta;
 cl_mem d_total_cross_section;
 cl_mem d_weights;
 cl_mem d_scalar_flux;
+
+// Sub-buffer arrays
+cl_mem *d_sub_flux_in;
+cl_mem *d_sub_flux_out;
+cl_mem *d_sub_flux_i;
+cl_mem *d_sub_flux_j;
+cl_mem *d_sub_flux_k;
+
+// Global problem sizes
+int nx, ny, nz, ng, nang, noct, cmom, ichunk;
+double d_dd_i;
 
 // Global variable for the timestep
 unsigned int global_timestep;
@@ -253,6 +264,14 @@ void opencl_teardown_(void)
     err = clReleaseMemObject(d_scalar_flux);
     check_error(err, "Releasing d_scalar_flux buffer");
 
+    for (unsigned int i = 0; i < nx*ny*nz*noct; i++)
+    {
+        err = clReleaseMemObject(d_sub_flux_in[i]);
+        check_error(err, "Releasing d_sub_flux_in buffer");
+        err = clReleaseMemObject(d_sub_flux_out[i]);
+        check_error(err, "Releasing d_sub_flux_out buffer");
+    }
+
 
     for (int i = 0; i < NUM_QUEUES; i++)
     {
@@ -309,8 +328,6 @@ void zero_centre_flux_in_buffer_(void);
 // flux_in(nang,nx,ny,nz,noct,ng)   - Incoming time-edge flux pointer
 // denom(nang,nx,ny,nz,ng) - Sweep denominator, pre-computed/inverted
 // weights(nang) - angle weights for scalar reduction
-int nx, ny, nz, ng, nang, noct, cmom, ichunk;
-double d_dd_i;
 void copy_to_device_(
     int *nx_, int *ny_, int *nz_,
     int *ng_, int *nang_, int *noct_, int *cmom_,
@@ -356,6 +373,23 @@ void copy_to_device_(
 
     zero_centre_flux_in_buffer_();
 
+    // Create sub-buffers for angular fluxes
+    d_sub_flux_in = (cl_mem *)malloc(sizeof(cl_mem)*nx*ny*nz*noct);
+    d_sub_flux_out = (cl_mem *)malloc(sizeof(cl_mem)*nx*ny*nz*noct);
+    for (unsigned int i = 0; i < nx; i++)
+        for (unsigned int j = 0; j < ny; j++)
+            for (unsigned int k = 0; k < nz; k++)
+                for (unsigned int o = 0; o < noct; o++)
+                {
+                    cl_buffer_region info = {
+                        .origin = sizeof(double)*((nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)),
+                        .size = sizeof(double)*nang*ng
+                    };
+                    d_sub_flux_in[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*o)] = clCreateSubBuffer(d_flux_in, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &info, &err);
+                    d_sub_flux_out[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*o)] = clCreateSubBuffer(d_flux_out, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &info, &err);
+                    check_error(err, "Creating flux_in sub-buffer");
+                }
+
     // flux_i(nang,ny,nz,ng)     - Working psi_x array (edge pointers)
     // flux_j(nang,ichunk,nz,ng) - Working psi_y array
     // flux_k(nang,ichunk,ny,ng) - Working psi_z array
@@ -370,6 +404,8 @@ void copy_to_device_(
     check_error(err, "Creating flux_k buffer");
 
     zero_edge_flux_buffers_();
+
+    // TODO - Create sub-buffers for edge fluxes
 
     d_dd_j = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(double)*nang, NULL, &err);
     check_error(err, "Creating dd_j buffer");
@@ -630,21 +666,6 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
     {
         err = clSetKernelArg(k_sweep_cell[qq], 3, sizeof(unsigned int), &oct);
         check_error(err, "Setting octant for sweep_cell kernel");
-
-        // Swap the angular flux pointers if necessary
-        // Even timesteps: Read flux_in and write to flux_out
-        // Odd timesteps: Read flux_out and write to flux_in
-        if (timestep % 2 == 0)
-        {
-            err = clSetKernelArg(k_sweep_cell[qq], 19, sizeof(cl_mem), &d_flux_in);
-            err |= clSetKernelArg(k_sweep_cell[qq], 20, sizeof(cl_mem), &d_flux_out);
-        }
-        else
-        {
-            err = clSetKernelArg(k_sweep_cell[qq], 19, sizeof(cl_mem), &d_flux_out);
-            err |= clSetKernelArg(k_sweep_cell[qq], 20, sizeof(cl_mem), &d_flux_in);
-        }
-        check_error(err, "Setting flux_in/out args for sweep_cell kernel");
     }
     // Store the number of cells up to the end of the previous plane
     // Used to give the length of the wait list for the current plane
@@ -683,6 +704,21 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
             err |= clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 1, sizeof(unsigned int), &j);
             err |= clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 2, sizeof(unsigned int), &k);
             check_error(err, "Setting sweep_cell kernel args cell positions");
+
+            // Swap the angular flux pointers if necessary
+            // Even timesteps: Read flux_in and write to flux_out
+            // Odd timesteps: Read flux_out and write to flux_in
+            if (timestep % 2 == 0)
+            {
+                err = clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 19, sizeof(cl_mem), &(d_sub_flux_in[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*oct)]));
+                err |= clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 20, sizeof(cl_mem), &(d_sub_flux_out[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*oct)]));
+            }
+            else
+            {
+                err = clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 19, sizeof(cl_mem), &(d_sub_flux_out[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*oct)]));
+                err |= clSetKernelArg(k_sweep_cell[l % NUM_QUEUES], 20, sizeof(cl_mem), &(d_sub_flux_in[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*oct)]));
+            }
+            check_error(err, "Setting flux_in/out args for sweep_cell kernel");
 
             // Enqueue the kernel
             err = clEnqueueNDRangeKernel(queue[l % NUM_QUEUES], k_sweep_cell[l % NUM_QUEUES], 1, 0, global, NULL, 0, NULL, &events[last_event+l]);
@@ -744,9 +780,13 @@ void get_output_flux_(double* flux_out)
     double *tmp = calloc(sizeof(double),nang*ng*nx*ny*nz*noct);
     cl_int err;
     if (global_timestep % 2 == 0)
+    {
         err = clEnqueueReadBuffer(queue[0], d_flux_out, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
+    }
     else
+    {
         err = clEnqueueReadBuffer(queue[0], d_flux_in, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
+    }
     check_error(err, "Reading d_flux_out");
 
     // Transpose the data into the original SNAP format
