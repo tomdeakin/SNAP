@@ -15,7 +15,7 @@
 #include "sweep_kernels.h"
 
 
-#define NUM_QUEUES 4
+#define NUM_QUEUES 1
 
 
 // Global OpenCL handles (context, queue, etc.)
@@ -168,7 +168,7 @@ void opencl_setup_(void)
     // Create command queues
     for (int i = 0; i < NUM_QUEUES; i++)
     {
-        queue[i] = clCreateCommandQueue(context, device, 0, &err);
+        queue[i] = clCreateCommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
         check_error(err, "Creating command queue");
     }
 
@@ -709,18 +709,26 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
         last_event += planes[d].num_cells;
     }
     // Decrement the reference counters so the API can bin these events
-    for (int e = 0; e < nx*ny*nz; e++)
+    /*for (int e = 0; e < nx*ny*nz; e++)
     {
         //err = clReleaseEvent(events[e]);
         err = clReleaseEvent(dag[e]);
         check_error(err, "Releasing event");
-    }
+    }*/
 }
 
 // Perform a sweep over the grid for all the octants
 void ocl_sweep_(void)
 {
     cl_int err;
+
+    // Enqueue a barrier to ensure memory transfers have finished
+    for (int q = 0; q < NUM_QUEUES; q++)
+    {
+        err = clEnqueueBarrier(queue[q]);
+        check_error(err, "Enqueue barrier");
+    }
+
 
     // Number of planes in this octant
     unsigned int ndiag = ichunk + ny + nz - 2;
@@ -746,7 +754,11 @@ void ocl_sweep_(void)
         enqueue_octant(global_timestep, o, ndiag, planes, dag);
         t2 = omp_get_wtime();
         printf("octant %d enqueue took %lfs\n", o, t2-t1);
+        err = clEnqueueBarrier(queue[0]);
+        check_error(err, "Enqueue barrier");
         zero_edge_flux_buffers_();
+        err = clEnqueueBarrier(queue[0]);
+        check_error(err, "Enqueue barrier");
     }
 
     // The last cell, and the copy zero array are on queue zero,
