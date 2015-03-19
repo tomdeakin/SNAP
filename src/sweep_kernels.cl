@@ -17,8 +17,8 @@
 #define total_cross_section(g,i,j,k) total_cross_section[g+(ng*i)+(ng*nx*j)+(ng*nx*ny*k)]
 #define scalar(i,j,k,g) scalar[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*g)]
 #define weights(a) weights[a]
-#define angular(a,g,i,j,k,o) angular[a+(nang*g)+(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)]
-#define angular_prev(a,g,i,j,k,o) angular_prev[a+(nang*g)+(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)]
+#define angular(a,g,i,j,k,o) angular[a+(nang*g)+(num_doubles*i)+(num_doubles*nx*j)+(num_doubles*nx*ny*k)+(num_doubles*nx*ny*nz*o)]
+#define angular_prev(a,g,i,j,k,o) angular_prev[a+(nang*g)+(num_doubles*i)+(num_doubles*nx*j)+(num_doubles*nx*ny*k)+(num_doubles*nx*ny*nz*o)]
 
 // Solve the transport equations for a single angle in a single cell for a single group
 __kernel void sweep_cell(
@@ -192,6 +192,7 @@ __kernel void reduce_angular(
     const unsigned int nang,
     const unsigned int ng,
     const unsigned int noct,
+    const unsigned int num_doubles,
     __global double *weights,
     __global double *angular,
     __global double *angular_prev,

@@ -59,6 +59,8 @@ double d_dd_i;
 // Global variable for the timestep
 unsigned int global_timestep;
 
+unsigned int num_doubles;
+
 // List of OpenCL events, one for each cell
 // This is used to encourage spacial parallelism by
 // enqueuing kernels in multiple queues which only
@@ -365,10 +367,23 @@ void copy_to_device_(
     // Create buffers and copy data to device
     cl_int err;
 
-    d_flux_in = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double)*nang*nx*ny*nz*noct*ng, NULL, &err);
+    // The start of each cell needs to be aligned to the device CL_DEVICE_MEM_BASE_ADDR_ALIGN
+    cl_uint base_addr;
+    err = clGetDeviceInfo(device, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof(cl_uint), &base_addr, NULL);
+    printf("base addr %d\n", base_addr);
+    check_error(err, "Getting deivice memory base alignment");
+    num_doubles = base_addr / 8 / sizeof(double);
+    if (num_doubles < (nang * ng))
+    {
+        num_doubles = (nang * ng) + ((nang * ng) % num_doubles);
+    }
+    printf("nang*ng %d\n", nang*ng);
+    printf("num doubles %d\n", num_doubles);
+
+    d_flux_in = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double)*num_doubles*nx*ny*nz*noct, NULL, &err);
     check_error(err, "Creating flux_in buffer");
 
-    d_flux_out = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double)*nang*nx*ny*nz*noct*ng, NULL, &err);
+    d_flux_out = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double)*num_doubles*nx*ny*nz*noct, NULL, &err);
     check_error(err, "Creating flux_out buffer");
 
     zero_centre_flux_in_buffer_();
@@ -382,7 +397,7 @@ void copy_to_device_(
                 for (unsigned int o = 0; o < noct; o++)
                 {
                     cl_buffer_region info = {
-                        .origin = sizeof(double)*((nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)),
+                        .origin = sizeof(double)*((num_doubles*i)+(num_doubles*nx*j)+(num_doubles*nx*ny*k)+(num_doubles*nx*ny*nz*o)),
                         .size = sizeof(double)*nang*ng
                     };
                     d_sub_flux_in[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*o)] = clCreateSubBuffer(d_flux_in, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &info, &err);
@@ -779,15 +794,24 @@ void get_output_flux_(double* flux_out)
 {
     double *tmp = calloc(sizeof(double),nang*ng*nx*ny*nz*noct);
     cl_int err;
-    if (global_timestep % 2 == 0)
-    {
-        err = clEnqueueReadBuffer(queue[0], d_flux_out, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
-    }
-    else
-    {
-        err = clEnqueueReadBuffer(queue[0], d_flux_in, CL_TRUE, 0, sizeof(double)*nang*nx*ny*nz*noct*ng, tmp, 0, NULL, NULL);
-    }
-    check_error(err, "Reading d_flux_out");
+    for (unsigned int i = 0; i < nx; i++)
+        for (unsigned int j = 0; j < ny; j++)
+            for (unsigned int k = 0; k < nz; k++)
+                for (unsigned int o = 0; o < noct; o++)
+                {
+                    if (global_timestep % 2 == 0)
+                    {
+                        err = clEnqueueReadBuffer(queue[0], d_sub_flux_out[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*o)], CL_FALSE, 0, sizeof(double)*nang*ng, &(tmp[(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)]), 0, NULL, NULL);
+                    }
+                    else
+                    {
+                        err = clEnqueueReadBuffer(queue[0], d_sub_flux_in[i+(nx*j)+(nx*ny*k)+(nx*ny*nz*o)], CL_FALSE, 0, sizeof(double)*nang*ng, &(tmp[(nang*ng*i)+(nang*ng*nx*j)+(nang*ng*nx*ny*k)+(nang*ng*nx*ny*nz*o)]), 0, NULL, NULL);
+                    }
+                    check_error(err, "Reading d_flux_out");
+                }
+
+    err = clFinish(queue[0]);
+    check_error(err, "Finish reading angular flux");
 
     // Transpose the data into the original SNAP format
     for (int a = 0; a < nang; a++)
@@ -813,12 +837,13 @@ void ocl_scalar_flux_(void)
     err |= clSetKernelArg(k_reduce_angular, 3, sizeof(unsigned int), &nang);
     err |= clSetKernelArg(k_reduce_angular, 4, sizeof(unsigned int), &ng);
     err |= clSetKernelArg(k_reduce_angular, 5, sizeof(unsigned int), &noct);
+    err |= clSetKernelArg(k_reduce_angular, 6, sizeof(unsigned int), &num_doubles);
 
-    err |= clSetKernelArg(k_reduce_angular, 6, sizeof(cl_mem), &d_weights);
-    err |= clSetKernelArg(k_reduce_angular, 7, sizeof(cl_mem), &d_flux_out);
-    err |= clSetKernelArg(k_reduce_angular, 8, sizeof(cl_mem), &d_flux_in);
-    err |= clSetKernelArg(k_reduce_angular, 9, sizeof(cl_mem), &d_time_delta);
-    err |= clSetKernelArg(k_reduce_angular, 10, sizeof(cl_mem), &d_scalar_flux);
+    err |= clSetKernelArg(k_reduce_angular, 7, sizeof(cl_mem), &d_weights);
+    err |= clSetKernelArg(k_reduce_angular, 8, sizeof(cl_mem), &d_flux_out);
+    err |= clSetKernelArg(k_reduce_angular, 9, sizeof(cl_mem), &d_flux_in);
+    err |= clSetKernelArg(k_reduce_angular, 10, sizeof(cl_mem), &d_time_delta);
+    err |= clSetKernelArg(k_reduce_angular, 11, sizeof(cl_mem), &d_scalar_flux);
     check_error(err, "Setting reduce_angular kernel arguments");
 
     err = clEnqueueNDRangeKernel(queue[0], k_reduce_angular, 3, 0, global, NULL, 0, NULL, NULL);
