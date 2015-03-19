@@ -370,13 +370,17 @@ void copy_to_device_(
     // The start of each cell needs to be aligned to the device CL_DEVICE_MEM_BASE_ADDR_ALIGN
     cl_uint base_addr;
     err = clGetDeviceInfo(device, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof(cl_uint), &base_addr, NULL);
-    printf("base addr %d\n", base_addr);
     check_error(err, "Getting deivice memory base alignment");
+    base_addr = 4096;
+    printf("base addr %d\n", base_addr);
     num_doubles = base_addr / 8 / sizeof(double);
-    if (num_doubles < (nang * ng))
+    printf("num doubles to align to %d\n", num_doubles);
+    if ((nang * ng) % num_doubles > 0)
     {
-        num_doubles = (nang * ng) + ((nang * ng) % num_doubles);
+        num_doubles = (nang * ng) + num_doubles - ((nang * ng) % num_doubles);
     }
+    else
+        num_doubles = nang*ng;
     printf("nang*ng %d\n", nang*ng);
     printf("num doubles %d\n", num_doubles);
 
