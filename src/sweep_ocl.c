@@ -371,7 +371,6 @@ void copy_to_device_(
     cl_uint base_addr;
     err = clGetDeviceInfo(device, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof(cl_uint), &base_addr, NULL);
     check_error(err, "Getting deivice memory base alignment");
-    base_addr = 4096;
     printf("base addr %d\n", base_addr);
     num_doubles = base_addr / 8 / sizeof(double);
     printf("num doubles to align to %d\n", num_doubles);
@@ -544,7 +543,7 @@ void zero_edge_flux_buffers_(void)
 void zero_centre_flux_in_buffer_(void)
 {
     cl_int err;
-    double *zero = (double *)calloc(sizeof(double),num_doubles*nx*ny*nz*noct*ng);
+    double *zero = (double *)calloc(sizeof(double),num_doubles*nx*ny*nz*noct);
     err = clEnqueueWriteBuffer(queue[0], d_flux_in, CL_TRUE, 0, sizeof(double)*num_doubles*nx*ny*nz*noct, zero, 0, NULL, NULL);
     free(zero);
     check_error(err, "Copying flux_in to device");
