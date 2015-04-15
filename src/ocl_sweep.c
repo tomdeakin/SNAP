@@ -104,6 +104,38 @@ void set_sweep_cell_args(void)
 
 }
 
+// Set all the kernel arguments that are constant over each octant sweep
+void set_fixup_args(void)
+{
+    cl_int err;
+    // Set the kernel arguments
+    err = clSetKernelArg(k_fixup, 4, sizeof(int), &ichunk);
+    err |= clSetKernelArg(k_fixup, 5, sizeof(int), &nx);
+    err |= clSetKernelArg(k_fixup, 6, sizeof(int), &ny);
+    err |= clSetKernelArg(k_fixup, 7, sizeof(int), &nz);
+    err |= clSetKernelArg(k_fixup, 8, sizeof(int), &ng);
+    err |= clSetKernelArg(k_fixup, 9, sizeof(int), &nang);
+    err |= clSetKernelArg(k_fixup, 10, sizeof(int), &noct);
+    err |= clSetKernelArg(k_fixup, 11, sizeof(int), &cmom);
+
+    err |= clSetKernelArg(k_fixup, 12, sizeof(double), &d_dd_i);
+    err |= clSetKernelArg(k_fixup, 13, sizeof(cl_mem), &d_dd_j);
+    err |= clSetKernelArg(k_fixup, 14, sizeof(cl_mem), &d_dd_k);
+    err |= clSetKernelArg(k_fixup, 15, sizeof(cl_mem), &d_mu);
+    err |= clSetKernelArg(k_fixup, 16, sizeof(cl_mem), &d_scat_coeff);
+    err |= clSetKernelArg(k_fixup, 17, sizeof(cl_mem), &d_time_delta);
+    err |= clSetKernelArg(k_fixup, 18, sizeof(cl_mem), &d_total_cross_section);
+
+    err |= clSetKernelArg(k_fixup, 21, sizeof(cl_mem), &d_flux_i);
+    err |= clSetKernelArg(k_fixup, 22, sizeof(cl_mem), &d_flux_j);
+    err |= clSetKernelArg(k_fixup, 23, sizeof(cl_mem), &d_flux_k);
+
+
+    err |= clSetKernelArg(k_fixup, 24, sizeof(cl_mem), &d_source);
+    err |= clSetKernelArg(k_fixup, 25, sizeof(cl_mem), &d_denom);
+    check_error(err, "Set fixup kernel args");
+}
+
 // Enqueue the kernels to sweep over the grid and compute the angular flux
 // Kernel: wavefront of cells
 // Work-group: energy group
@@ -183,6 +215,27 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
         check_error(err, "Setting flux_in/out args for sweep_cell kernel");
     }
 
+    if (fixup)
+    {
+        err = clSetKernelArg(k_fixup, 3, sizeof(unsigned int), &oct);
+        err = clSetKernelArg(k_fixup, 0, sizeof(int), &istep);
+        err = clSetKernelArg(k_fixup, 1, sizeof(int), &jstep);
+        err = clSetKernelArg(k_fixup, 2, sizeof(int), &kstep);
+        check_error(err, "Setting octant for fixup kernel");
+
+        if (timestep % 2 == 0)
+        {
+            err = clSetKernelArg(k_fixup, 19, sizeof(cl_mem), &d_flux_in[oct]);
+            err |= clSetKernelArg(k_fixup, 20, sizeof(cl_mem), &d_flux_out[oct]);
+        }
+        else
+        {
+            err = clSetKernelArg(k_fixup, 19, sizeof(cl_mem), &d_flux_out[oct]);
+            err |= clSetKernelArg(k_fixup, 20, sizeof(cl_mem), &d_flux_in[oct]);
+        }
+        check_error(err, "Setting flux_in/out args for sweep_cell kernel");
+    }
+
     // Loop over the diagonal wavefronts
     for (unsigned int d = 0; d < ndiag; d++)
     {
@@ -193,6 +246,12 @@ void enqueue_octant(const unsigned int timestep, const unsigned int oct, const u
         global[1] = planes[d].num_cells;
         err = clEnqueueNDRangeKernel(queue[0], k_sweep_cell[0], 2, 0, global, local, 0, NULL, NULL);
         check_error(err, "enqueue wavefront");
+        if (fixup)
+        {
+            err = clSetKernelArg(k_fixup, 26, sizeof(cl_mem), &d_list);
+            err = clEnqueueNDRangeKernel(queue[0], k_fixup, 2, 0, global, local, 0, NULL, NULL);
+            check_error(err, "enqueue fixup");
+        }
         err = clReleaseMemObject(d_list);
         check_error(err, "Release mem object");
     }
@@ -211,6 +270,8 @@ void ocl_sweep_(void)
 
     // Set the constant kernel arguemnts
     set_sweep_cell_args();
+    if (fixup)
+        set_fixup_args();
 
     for (int o = 0; o < noct; o++)
     {

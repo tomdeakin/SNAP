@@ -113,6 +113,9 @@ void opencl_setup_(void)
         check_error(err, "Creating kernel sweep_cell");
     }
 
+    k_fixup = clCreateKernel(program, "fixup", &err);
+    check_error(err, "Creating kernel fixup");
+
     k_reduce_angular = clCreateKernel(program, "reduce_angular", &err);
     check_error(err, "Creating kernel reduce_angular");
 
@@ -250,6 +253,9 @@ void opencl_teardown_(void)
         err = clReleaseKernel(k_sweep_cell[i]);
         check_error(err, "Releasing k_sweep_cell kernel");
     }
+
+    err = clReleaseKernel(k_fixup);
+    check_error(err, "Releasing k_fixup kernel");
 
     err = clReleaseKernel(k_reduce_angular);
     check_error(err, "Releasing k_reduce_angular kernel");

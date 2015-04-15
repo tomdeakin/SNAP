@@ -27,3 +27,5 @@
 
     double epsi;
     double tolr;
+
+    int fixup;

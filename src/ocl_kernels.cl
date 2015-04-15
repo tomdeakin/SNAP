@@ -134,14 +134,89 @@ __kernel void sweep_cell(
     psi *= denom(a_idx,g_idx,i,j,k);
 
     // Compute upwind fluxes
-    double tmp_flux_i = 2.0*psi - flux_i(a_idx,g_idx,j,k);
-    double tmp_flux_j = 2.0*psi - flux_j(a_idx,g_idx,i,k);
-    double tmp_flux_k = 2.0*psi - flux_k(a_idx,g_idx,i,j);
+    // Write values to global memory
+    flux_i(a_idx,g_idx,j,k) = 2.0*psi - flux_i(a_idx,g_idx,j,k);
+    flux_j(a_idx,g_idx,i,k) = 2.0*psi - flux_j(a_idx,g_idx,i,k);
+    flux_k(a_idx,g_idx,i,j) = 2.0*psi - flux_k(a_idx,g_idx,i,j);
 
     // Time differencing on final flux value
     if (time_delta(g_idx) != 0.0)
     {
         psi = 2.0 * psi - flux_in(a_idx,g_idx,i,j,k);
+    }
+
+    flux_out(a_idx,g_idx,i,j,k) = psi;
+    return;
+}
+
+
+// Do the fixup routine
+__kernel void fixup(
+    // Current cell index
+    const int istep,
+    const int jstep,
+    const int kstep,
+    const unsigned int oct,
+
+    // Problem sizes
+    const unsigned int ichunk,
+    const unsigned int nx,
+    const unsigned int ny,
+    const unsigned int nz,
+    const unsigned int ng,
+    const unsigned int nang,
+    const unsigned int noct,
+    const unsigned int cmom,
+
+    // Coefficients
+    const double dd_i,
+    __global const double * restrict dd_j,
+    __global const double * restrict dd_k,
+    __global const double * restrict mu,
+    __global const double * restrict scat_coef,
+    __global const double * restrict time_delta,
+    __global const double * restrict total_cross_section,
+
+    // Angular flux
+    __global const double * restrict flux_in,
+    __global double * restrict flux_out,
+
+    // Edge fluxes
+    __global double * restrict flux_i,
+    __global double * restrict flux_j,
+    __global double * restrict flux_k,
+
+    // Source
+    __global const double * restrict source,
+    __global const double * restrict denom,
+
+    __global const struct cell * restrict cell_index
+    )
+{
+
+    // Get indexes for angle and group
+    const unsigned int a_idx = get_global_id(0) % nang;
+    const unsigned int g_idx = get_global_id(0) / nang;
+    const unsigned int i = (istep > 0) ? cell_index[get_global_id(1)].i : nx - cell_index[get_global_id(1)].i - 1;
+    const unsigned int j = (jstep > 0) ? cell_index[get_global_id(1)].j : ny - cell_index[get_global_id(1)].j - 1;
+    const unsigned int k = (kstep > 0) ? cell_index[get_global_id(1)].k : nz - cell_index[get_global_id(1)].k - 1;
+
+    if (a_idx >= nang || g_idx >= ng)
+        return;
+
+    double tmp_flux_i = flux_i(a_idx,g_idx,j,k);
+    double tmp_flux_j = flux_j(a_idx,g_idx,i,k);
+    double tmp_flux_k = flux_k(a_idx,g_idx,i,j);
+    double psi = flux_out(a_idx,g_idx,i,j,k);
+
+    // Compute angular source
+    // Begin with first scattering moment
+    double source_term = source(0,i,j,k,g_idx);
+
+    // Add in the anisotropic scattering source moments
+    for (unsigned int l = 1; l < cmom; l++)
+    {
+        source_term += scat_coef(a_idx,l,oct) * source(l,i,j,k,g_idx);
     }
 
     // Perform the fixup loop
@@ -195,17 +270,10 @@ __kernel void sweep_cell(
         }
     }
     // Fix up loop is done, just need to set the final values
-    tmp_flux_i = tmp_flux_i * zeros[0];
-    tmp_flux_j = tmp_flux_j * zeros[1];
-    tmp_flux_k = tmp_flux_k * zeros[2];
-    psi = psi * zeros[3];
-
-    // Write values to global memory
-    flux_i(a_idx,g_idx,j,k) = tmp_flux_i;
-    flux_j(a_idx,g_idx,i,k) = tmp_flux_j;
-    flux_k(a_idx,g_idx,i,j) = tmp_flux_k;
-    flux_out(a_idx,g_idx,i,j,k) = psi;
-    return;
+    flux_i(a_idx,g_idx,j,k) = tmp_flux_i * zeros[0];
+    flux_j(a_idx,g_idx,i,k)= tmp_flux_j * zeros[1];
+    flux_k(a_idx,g_idx,i,j) = tmp_flux_k * zeros[2];
+    flux_out(a_idx,g_idx,i,j,k) = psi * zeros[3];
 }
 
 
