@@ -460,7 +460,7 @@ __kernel void reduce_angular_cell(
         }
     }
 
-    barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);
 
     // Reduce in local memory
     for (unsigned int offset = get_local_size(0) / 2; offset > 0; offset >>= 1)
@@ -555,7 +555,7 @@ __kernel void reduce_moments_cell(
             }
         }
 
-        barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
 
         // Reduce in local memory
         for (unsigned int offset = get_local_size(0) / 2; offset > 0; offset >>= 1)
