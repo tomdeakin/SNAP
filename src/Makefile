@@ -55,18 +55,19 @@ endif
 OBJS = global.o snap_main.o utils.o version.o plib.o geom.o sn.o \
        data.o control.o input.o setup.o dealloc.o translv.o solvar.o \
        outer.o expxs.o inner.o sweep.o octsweep.o dim1_sweep.o dim3_sweep.o \
-       output.o time.o mms.o
+       output.o time.o mms.o omp_sweep.o
 
 SRCS = global.f90 snap_main.f90 utils.f90 version.f90 plib.f90 geom.f90 \
        sn.f90 data.f90 control.f90 input.f90 setup.f90 dealloc.f90 \
        translv.f90 solvar.f90 outer.f90 expxs.f90 inner.f90 sweep.f90 \
-       octsweep.f90 dim1_sweep.f90 dim3_sweep.f90 output.f90 time.f90 mms.f90
+       octsweep.f90 dim1_sweep.f90 dim3_sweep.f90 output.f90 time.f90 mms.f90 \
+       omp_sweep.f90
 
 $(TARGET) :	$(OBJS)
 		$(FORTRAN) $(FFLAGS) $(FFLAG2) -o $@ $(OBJS)
 
 snap_main.o :	global.o utils.o version.o input.o setup.o output.o time.o \
-		dealloc.o plib.o control.o
+		dealloc.o plib.o control.o omp_sweep.o
 utils.o :	global.o dealloc.o plib.o
 version.o :	global.o
 plib.o :	global.o time.o
@@ -95,6 +96,9 @@ output.o :	global.o geom.o sn.o data.o control.o utils.o solvar.o \
 		mms.o time.o plib.o
 time.o :	global.o
 mms.o:	global.o geom.o sn.o data.o control.o plib.o
+
+omp_sweep.o:	global.o geom.o data.o sn.o
+
 
 #
 # Fortran rule

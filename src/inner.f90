@@ -29,6 +29,8 @@ MODULE inner_module
 
   USE plib_module, ONLY: glmax, comm_snap, iproc, root
 
+  USE omp_sweep_module, ONLY: omp_sweep
+
   IMPLICIT NONE
 
   PRIVATE
@@ -90,7 +92,8 @@ MODULE inner_module
 
     CALL wtime ( t3 )
 
-    CALL sweep
+    ! CALL sweep
+    CALL omp_sweep
 
     CALL wtime ( t4 )
     tsweeps = tsweeps + t4 - t3

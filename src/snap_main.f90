@@ -81,6 +81,8 @@ PROGRAM snap_main
 
   USE control_module, ONLY: otrdone
 
+  USE omp_sweep_module, ONLY: omp_sweep_alloc, omp_sweep_dealloc
+
   IMPLICIT NONE
 !_______________________________________________________________________
 !
@@ -173,6 +175,14 @@ PROGRAM snap_main
 !_______________________________________________________________________
 
   CALL setup
+
+!_______________________________________________________________________
+!
+! Setup problem in new OpenMP
+!_______________________________________________________________________
+
+  CALL omp_sweep_alloc
+
 !_______________________________________________________________________
 !
 ! Call for the problem solution
@@ -190,6 +200,8 @@ PROGRAM snap_main
 !
 ! Final cleanup: deallocate, close output file, end the program
 !_______________________________________________________________________
+
+  CALL omp_sweep_dealloc
 
   CALL dealloc_input ( 3 )
   CALL dealloc_solve ( 3 )
