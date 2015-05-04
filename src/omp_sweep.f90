@@ -10,17 +10,19 @@
 
 MODULE omp_sweep_module
 
-USE global_module, ONLY: i_knd, r_knd
+  USE global_module, ONLY: i_knd, r_knd
 
-USE geom_module, ONLY: nx, ny_gl, nz_gl
+  USE geom_module, ONLY: nx, ny_gl, nz_gl, hi, hj, hk, dinv
 
-USE data_module, ONLY: ng
+  USE data_module, ONLY: ng, vdelt
 
-USE sn_module, ONLY: nang, noct
+  USE sn_module, ONLY: nang, noct, ec, cmom, mu
+
+  USE solvar_module, ONLY: qtot
+
+  USE time_module, ONLY: wtime
 
   IMPLICIT NONE
-
-  PRIVATE
 
   TYPE cell
     INTEGER(i_knd) :: i, j, k
@@ -31,6 +33,8 @@ USE sn_module, ONLY: nang, noct
     INTEGER(i_knd) :: index
     TYPE(cell), ALLOCATABLE, DIMENSION(:) :: cells
   END TYPE plane
+
+  PUBLIC
 
   ! Flux arrays
   REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: flux_in, flux_out
@@ -72,8 +76,12 @@ CONTAINS
 
     INTEGER(i_knd) :: o, p, c, g, a, nplanes
     INTEGER(i_knd) :: xhi, yhi, zhi, istep, jstep, kstep
-    INTEGER(i_knd) :: i, j, k
+    INTEGER(i_knd) :: i, j, k, l
+    REAL(r_knd) :: source, psi
     TYPE(plane), ALLOCATABLE, DIMENSION(:) :: planes
+    REAL(r_knd) :: t1, t2
+
+    CALL wtime ( t1 )
 !_______________________________________________________________________
 !
 !   Set up the sweep order
@@ -91,6 +99,8 @@ CONTAINS
 !_______________________________________________________________________
 
     CALL zero_edge_flux
+    flux_in = 0.0
+    flux_out = 0.0
 
     ! Loop over octants
     octants: DO o = 1, noct
@@ -102,29 +112,29 @@ CONTAINS
           yhi = ny_gl
           zhi = nz_gl
         CASE (2)
-          xhi = nx
+          xhi = 1
           yhi = ny_gl
-          zhi = 1
+          zhi = nz_gl
         CASE (3)
           xhi = nx
           yhi = 1
           zhi = nz_gl
         CASE (4)
-          xhi = nx
+          xhi = 1
           yhi = 1
-          zhi = 1
+          zhi = nz_gl
         CASE (5)
-         xhi = 1
-         yhi = ny_gl
-         zhi = nz_gl
+          xhi = nx
+          yhi = ny_gl
+          zhi = 1
         CASE (6)
           xhi = 1
           yhi = ny_gl
           zhi = 1
         CASE (7)
-          xhi = 1
+          xhi = nx
           yhi = 1
-          zhi = nz_gl
+          zhi = 1
         CASE (8)
           xhi = 1
           yhi = 1
@@ -164,12 +174,12 @@ CONTAINS
           IF ( jstep > 0) THEN
             j = planes(p)%cells(c)%j
           ELSE
-            j = nx - planes(p)%cells(c)%j + 1
+            j = ny_gl - planes(p)%cells(c)%j + 1
           END IF
           IF ( kstep > 0) THEN
             k = planes(p)%cells(c)%k
           ELSE
-            k = nx - planes(p)%cells(c)%k + 1
+            k = nz_gl - planes(p)%cells(c)%k + 1
           END IF
 
           ! Loop over the energy groups
@@ -177,7 +187,30 @@ CONTAINS
             ! Loop over the angles in the octant
             angles: DO a = 1, nang
 
-              !stuff
+              ! Compute the angular flux
+              source = qtot(1,i,j,k,g)
+              DO l = 2, cmom
+                source = source + ec(a,l,o) * qtot(l,i,j,k,g)
+              END DO
+
+              psi = source + (flux_i(a,g,j,k) * mu(a) * hi) + (flux_j(a,g,i,k) * hj(a)) + (flux_k(a,g,i,j) * hk(a))
+
+              IF (vdelt(g) /= 0.0) psi = psi + vdelt(g) * flux_in(a,g,i,j,k,o)
+
+              psi = psi * dinv(a,i,j,k,g)
+
+              ! TODO: fixup
+
+              flux_i(a,g,j,k) = 2.0 * psi - flux_i(a,g,j,k)
+              flux_j(a,g,i,k) = 2.0 * psi - flux_j(a,g,i,k)
+              flux_k(a,g,i,j) = 2.0 * psi - flux_k(a,g,i,j)
+
+              IF (vdelt(g) /= 0.0) psi = (2.0 * psi) - flux_in(a,g,i,j,k,o)
+
+              flux_out(a,g,i,j,k,o) = psi
+
+              ! Reduce to the scalar flux
+              ! TODO
 
             END DO angles
           END DO groups
@@ -194,6 +227,9 @@ CONTAINS
     END DO
     DEALLOCATE ( planes )
 
+    CALL wtime ( t2 )
+
+    PRINT *, "Sweep took", t2-t1
 
   END SUBROUTINE omp_sweep
 
@@ -237,7 +273,22 @@ CONTAINS
     END DO
 
 
-  END SUBROUTINE compute_sweep_order    
+  END SUBROUTINE compute_sweep_order
+
+  SUBROUTINE transpose_angular_flux ( flux_in, flux_out )
+
+    REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: flux_in, flux_out
+    INTEGER(i_knd) :: o, g, a
+
+    DO o = 1, noct
+      DO g = 1, ng
+        DO a = 1, nang
+          flux_out(a,:,:,:,o,g) = flux_in(a,g,:,:,:,o)
+        END DO
+      END DO
+    END DO
+
+  END SUBROUTINE transpose_angular_flux
 
 
 END MODULE omp_sweep_module 

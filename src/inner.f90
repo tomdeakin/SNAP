@@ -21,7 +21,7 @@ MODULE inner_module
 
   USE control_module, ONLY: epsi, tolr, dfmxi, inrdone, it_det
 
-  USE solvar_module, ONLY: q2grp, s_xs, flux, fluxpi, fluxm, qtot
+  USE solvar_module, ONLY: q2grp, s_xs, flux, fluxpi, fluxm, qtot, ptr_out
 
   USE sweep_module, ONLY: sweep
 
@@ -29,7 +29,7 @@ MODULE inner_module
 
   USE plib_module, ONLY: glmax, comm_snap, iproc, root
 
-  USE omp_sweep_module, ONLY: omp_sweep
+  USE omp_sweep_module, ONLY: omp_sweep, flux_out
 
   IMPLICIT NONE
 
@@ -92,7 +92,8 @@ MODULE inner_module
 
     CALL wtime ( t3 )
 
-    ! CALL sweep
+    CALL sweep
+
     CALL omp_sweep
 
     CALL wtime ( t4 )

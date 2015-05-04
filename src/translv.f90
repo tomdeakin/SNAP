@@ -34,6 +34,8 @@ SUBROUTINE translv
 
   USE time_module, ONLY: tslv, wtime, tgrind, tparam
 
+  USE omp_sweep_module, ONLY: flux_out, transpose_angular_flux
+
   IMPLICIT NONE
 !_______________________________________________________________________
 !
@@ -244,6 +246,10 @@ SUBROUTINE translv
         * REAL( nang, r_knd ) * REAL( noct, r_knd )                    &
         * REAL( tot_iits, r_knd )
   tgrind = tslv*1.0E9_r_knd / tmp
+
+  CALL transpose_angular_flux(flux_out, ptr_in)
+  PRINT *, "Angular flux differs by", MAXVAL(ABS(ptr_out-ptr_in))
+
 !_______________________________________________________________________
 
   201 FORMAT( 10X, 'Iteration Monitor', /, 80A )
