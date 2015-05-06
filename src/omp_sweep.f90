@@ -61,9 +61,11 @@ CONTAINS
 
 
   SUBROUTINE zero_edge_flux
-    flux_i = 0.0
-    flux_j = 0.0
-    flux_k = 0.0
+  !$omp workshare
+    flux_i(:,:,:,:) = 0.0
+    flux_j(:,:,:,:) = 0.0
+    flux_k(:,:,:,:) = 0.0
+  !$omp end workshare
   END SUBROUTINE zero_edge_flux
 
 
@@ -81,7 +83,6 @@ CONTAINS
     TYPE(plane), ALLOCATABLE, DIMENSION(:) :: planes
     REAL(r_knd) :: t1, t2
 
-    CALL wtime ( t1 )
 !_______________________________________________________________________
 !
 !   Set up the sweep order
@@ -98,12 +99,17 @@ CONTAINS
 !   Sweep over the grid
 !_______________________________________________________________________
 
-    CALL zero_edge_flux
-    flux_in = 0.0
-    flux_out = 0.0
+    
+    !$omp workshare
+    flux_in(:,:,:,:,:,:) = 0.0
+    flux_out(:,:,:,:,:,:) = 0.0
+    !$omp end workshare
+
+    CALL wtime ( t1 )
 
     ! Loop over octants
     octants: DO o = 1, noct
+    CALL zero_edge_flux
 
       ! Calculate the corner co-ordinates for this octant
       SELECT CASE (o)
@@ -162,7 +168,13 @@ CONTAINS
 
       ! Loop over wavefronts
       wavefront: DO p = 1, nplanes
+
+      ! CALL THE C!!!!!!
+
         ! Loop over cells in the wavefront
+        !$omp parallel
+        !dir$ ivdep
+        !$omp do private(i,j,k,psi,source)
         cells: DO c = 1, planes(p)%num_cells
 
           ! Get the cell index
@@ -183,12 +195,14 @@ CONTAINS
           END IF
 
           ! Loop over the energy groups
+          !dir$ ivdep
           groups: DO g = 1, ng
             ! Loop over the angles in the octant
+            !dir$ ivdep
             angles: DO a = 1, nang
-
               ! Compute the angular flux
               source = qtot(1,i,j,k,g)
+              !dir$ novector
               DO l = 2, cmom
                 source = source + ec(a,l,o) * qtot(l,i,j,k,g)
               END DO
@@ -209,25 +223,27 @@ CONTAINS
 
               flux_out(a,g,i,j,k,o) = psi
 
-              ! Reduce to the scalar flux
-              ! TODO
-
             END DO angles
+
+            ! Reduce to the scalar flux
+            ! TODO
+
           END DO groups
         END DO cells
+      !$omp end do
+      !$omp end parallel
       END DO wavefront
 
-      CALL zero_edge_flux
 
     END DO octants
+
+    CALL wtime ( t2 )
 
     ! Deallocate the plane list
     DO a = p, nplanes
       DEALLOCATE ( planes(p)%cells )
     END DO
     DEALLOCATE ( planes )
-
-    CALL wtime ( t2 )
 
     PRINT *, "Sweep took", t2-t1
 

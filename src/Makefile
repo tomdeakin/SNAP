@@ -2,7 +2,7 @@
 # Build SNAP
 #
 OPT = yes
-FFLAGS = -O3
+FFLAGS = -O3 -align array64byte
 FFLAG2 =
 
 FORTRAN = mpif90
@@ -13,7 +13,7 @@ FORTRAN = mpif90
 #ifeq ($(FORTRAN),ifort)
 ifeq ($(FORTRAN),mpif90)
   TARGET = snap
-  FFLAGS = -O3 -openmp
+  FFLAGS = -O3 -openmp -xhost
   FFLAG2 =
   ifeq ($(OPT),no)
     TARGET = snap_db
@@ -97,7 +97,8 @@ output.o :	global.o geom.o sn.o data.o control.o utils.o solvar.o \
 time.o :	global.o
 mms.o:	global.o geom.o sn.o data.o control.o plib.o
 
-omp_sweep.o:	global.o geom.o data.o sn.o
+omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90
+	$(FORTRAN) $(FFLAGS) -vec-report7 omp_sweep.f90 -c $<
 
 
 #
