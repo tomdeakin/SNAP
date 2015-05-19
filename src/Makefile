@@ -55,7 +55,7 @@ endif
 OBJS = global.o snap_main.o utils.o version.o plib.o geom.o sn.o \
        data.o control.o input.o setup.o dealloc.o translv.o solvar.o \
        outer.o expxs.o inner.o sweep.o octsweep.o dim1_sweep.o dim3_sweep.o \
-       output.o time.o mms.o omp_sweep.o
+       output.o time.o mms.o omp_sweep.o omp_sweep_c.o
 
 SRCS = global.f90 snap_main.f90 utils.f90 version.f90 plib.f90 geom.f90 \
        sn.f90 data.f90 control.f90 input.f90 setup.f90 dealloc.f90 \
@@ -97,7 +97,7 @@ output.o :	global.o geom.o sn.o data.o control.o utils.o solvar.o \
 time.o :	global.o
 mms.o:	global.o geom.o sn.o data.o control.o plib.o
 
-omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90
+omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90 omp_sweep_c.o
 	$(FORTRAN) $(FFLAGS) -vec-report7 omp_sweep.f90 -c $<
 
 
@@ -106,6 +106,9 @@ omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90
 #
 %.o:	%.f90
 	$(FORTRAN) $(FFLAGS) -c $<
+
+%.o:	%.c
+	icc $(FFLAGS) -std=c99 -g -O0 -c $<
 
 #
 # Cleanup

@@ -61,11 +61,11 @@ CONTAINS
 
 
   SUBROUTINE zero_edge_flux
-  !$omp workshare
+  !!$omp workshare
     flux_i(:,:,:,:) = 0.0
     flux_j(:,:,:,:) = 0.0
     flux_k(:,:,:,:) = 0.0
-  !$omp end workshare
+  !!$omp end workshare
   END SUBROUTINE zero_edge_flux
 
 
@@ -100,16 +100,16 @@ CONTAINS
 !_______________________________________________________________________
 
     
-    !$omp workshare
+    !!$omp workshare
     flux_in(:,:,:,:,:,:) = 0.0
     flux_out(:,:,:,:,:,:) = 0.0
-    !$omp end workshare
+    !!$omp end workshare
 
     CALL wtime ( t1 )
 
     ! Loop over octants
     octants: DO o = 1, noct
-    CALL zero_edge_flux
+      CALL zero_edge_flux
 
       ! Calculate the corner co-ordinates for this octant
       SELECT CASE (o)
@@ -169,69 +169,73 @@ CONTAINS
       ! Loop over wavefronts
       wavefront: DO p = 1, nplanes
 
+      CALL omp_sweep_c( p, ng, nang, nx, ny_gl, nz_gl, istep, jstep, kstep, o, noct, cmom, &
+                         qtot, ec, mu, hi, hj, hk, vdelt, dinv, &
+                         flux_i, flux_j, flux_k, flux_in, flux_out )
+
       ! CALL THE C!!!!!!
 
         ! Loop over cells in the wavefront
-        !$omp parallel
-        !dir$ ivdep
-        !$omp do private(i,j,k,psi,source)
-        cells: DO c = 1, planes(p)%num_cells
+        !!$omp parallel
+        !!dir$ ivdep
+        !!$omp do private(i,j,k,psi,source)
+        ! cells: DO c = 1, planes(p)%num_cells
 
-          ! Get the cell index
-          IF ( istep > 0 ) THEN
-            i = planes(p)%cells(c)%i
-          ELSE
-            i = nx - planes(p)%cells(c)%i + 1
-          END IF
-          IF ( jstep > 0) THEN
-            j = planes(p)%cells(c)%j
-          ELSE
-            j = ny_gl - planes(p)%cells(c)%j + 1
-          END IF
-          IF ( kstep > 0) THEN
-            k = planes(p)%cells(c)%k
-          ELSE
-            k = nz_gl - planes(p)%cells(c)%k + 1
-          END IF
+        !   ! Get the cell index
+        !   IF ( istep > 0 ) THEN
+        !     i = planes(p)%cells(c)%i
+        !   ELSE
+        !     i = nx - planes(p)%cells(c)%i + 1
+        !   END IF
+        !   IF ( jstep > 0) THEN
+        !     j = planes(p)%cells(c)%j
+        !   ELSE
+        !     j = ny_gl - planes(p)%cells(c)%j + 1
+        !   END IF
+        !   IF ( kstep > 0) THEN
+        !     k = planes(p)%cells(c)%k
+        !   ELSE
+        !     k = nz_gl - planes(p)%cells(c)%k + 1
+        !   END IF
 
-          ! Loop over the energy groups
-          !dir$ ivdep
-          groups: DO g = 1, ng
-            ! Loop over the angles in the octant
-            !dir$ ivdep
-            angles: DO a = 1, nang
-              ! Compute the angular flux
-              source = qtot(1,i,j,k,g)
-              !dir$ novector
-              DO l = 2, cmom
-                source = source + ec(a,l,o) * qtot(l,i,j,k,g)
-              END DO
+        !   ! Loop over the energy groups
+        !   !dir$ ivdep
+        !   groups: DO g = 1, ng
+        !     ! Loop over the angles in the octant
+        !     !dir$ ivdep
+        !     angles: DO a = 1, nang
+        !       ! Compute the angular flux
+        !       source = qtot(1,i,j,k,g)
+        !       !dir$ novector
+        !       DO l = 2, cmom
+        !         source = source + ec(a,l,o) * qtot(l,i,j,k,g)
+        !       END DO
 
-              psi = source + (flux_i(a,g,j,k) * mu(a) * hi) + (flux_j(a,g,i,k) * hj(a)) + (flux_k(a,g,i,j) * hk(a))
+        !       psi = source + (flux_i(a,g,j,k) * mu(a) * hi) + (flux_j(a,g,i,k) * hj(a)) + (flux_k(a,g,i,j) * hk(a))
 
-              IF (vdelt(g) /= 0.0) psi = psi + vdelt(g) * flux_in(a,g,i,j,k,o)
+        !       IF (vdelt(g) /= 0.0) psi = psi + vdelt(g) * flux_in(a,g,i,j,k,o)
 
-              psi = psi * dinv(a,i,j,k,g)
+        !       psi = psi * dinv(a,i,j,k,g)
 
-              ! TODO: fixup
+        !       ! TODO: fixup
 
-              flux_i(a,g,j,k) = 2.0 * psi - flux_i(a,g,j,k)
-              flux_j(a,g,i,k) = 2.0 * psi - flux_j(a,g,i,k)
-              flux_k(a,g,i,j) = 2.0 * psi - flux_k(a,g,i,j)
+        !       flux_i(a,g,j,k) = 2.0 * psi - flux_i(a,g,j,k)
+        !       flux_j(a,g,i,k) = 2.0 * psi - flux_j(a,g,i,k)
+        !       flux_k(a,g,i,j) = 2.0 * psi - flux_k(a,g,i,j)
 
-              IF (vdelt(g) /= 0.0) psi = (2.0 * psi) - flux_in(a,g,i,j,k,o)
+        !       IF (vdelt(g) /= 0.0) psi = (2.0 * psi) - flux_in(a,g,i,j,k,o)
 
-              flux_out(a,g,i,j,k,o) = psi
+        !       flux_out(a,g,i,j,k,o) = psi
 
-            END DO angles
+        !     END DO angles
 
-            ! Reduce to the scalar flux
-            ! TODO
+        !     ! Reduce to the scalar flux
+        !     ! TODO
 
-          END DO groups
-        END DO cells
-      !$omp end do
-      !$omp end parallel
+        !   END DO groups
+        ! END DO cells
+      !!$omp end do
+      !!$omp end parallel
       END DO wavefront
 
 
