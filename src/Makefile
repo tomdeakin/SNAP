@@ -2,7 +2,7 @@
 # Build SNAP
 #
 OPT = yes
-FFLAGS = -O3 -align array64byte
+FFLAGS = -O3
 FFLAG2 =
 
 FORTRAN = mpif90
@@ -108,7 +108,7 @@ omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90 omp_sweep_c.o
 	$(FORTRAN) $(FFLAGS) -c $<
 
 %.o:	%.c
-	icc $(FFLAGS) -std=c99 -c $<
+	icc $(FFLAGS) -std=c99 -c -vec-report7 $<
 
 #
 # Cleanup
