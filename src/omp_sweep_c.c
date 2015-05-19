@@ -63,7 +63,7 @@ plane *compute_sweep_order(int nx, int ny, int nz)
 }
 
 #define qtot(m,i,j,k,g) qtot[(m)+((*cmom)*(i))+((*cmom)*(*nx)*(j))+((*cmom)*(*nx)*(*ny)*(k))+((*cmom)*(*nx)*(*ny)*(*nz)*(g))]
-#define ec(a,l,o) ec[(a)+((*nang)*(l))+((*nang)*(*cmom)*((*o)-1))]
+#define ec(a,l,o) ec[(a)+((*nang)*(l))+((*nang)*(*cmom)*(o))]
 #define flux_i(a,g,j,k) flux_i[(a)+((*nang)*(g))+((*nang)*(*ng)*(j))+((*nang)*(*ng)*(*ny)*(k))]
 #define flux_j(a,g,i,k) flux_j[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(k))]
 #define flux_k(a,g,i,j) flux_k[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(j))]
@@ -71,13 +71,13 @@ plane *compute_sweep_order(int nx, int ny, int nz)
 #define hj(a) hj[(a)]
 #define hk(a) hk[(a)]
 #define vdelt(g) vdelt[(g)]
-#define flux_in(a,g,i,j,k,o) flux_in[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(j))+((*nang)*(*ng)*(*nx)*(*ny)*(k))+((*nang)*(*ng)*(*nx)*(*ny)*(*nz)*((*o)-1))]
-#define flux_out(a,g,i,j,k,o) flux_out[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(j))+((*nang)*(*ng)*(*nx)*(*ny)*(k))+((*nang)*(*ng)*(*nx)*(*ny)*(*nz)*((*o)-1))]
+#define flux_in(a,g,i,j,k,o) flux_in[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(j))+((*nang)*(*ng)*(*nx)*(*ny)*(k))+((*nang)*(*ng)*(*nx)*(*ny)*(*nz)*(o))]
+#define flux_out(a,g,i,j,k,o) flux_out[(a)+((*nang)*(g))+((*nang)*(*ng)*(i))+((*nang)*(*ng)*(*nx)*(j))+((*nang)*(*ng)*(*nx)*(*ny)*(k))+((*nang)*(*ng)*(*nx)*(*ny)*(*nz)*(o))]
 #define dinv(a,i,j,k,g) dinv[(a)+((*nang)*(i))+((*nang)*(*nx)*(j))+((*nang)*(*nx)*(*ny)*(k))+((*nang)*(*nx)*(*ny)*(*nz)*(g))]
 
-void omp_sweep_c_(int *p, int *ng, int *nang, int *nx, int *ny, int *nz, int *istep, int *jstep, int *kstep, int *o, int *noct, int *cmom,
-                         double *qtot, double *ec, double *mu, double *hi, double *hj, double *hk, double *vdelt, double *dinv,
-                         double *flux_i, double *flux_j, double *flux_k, double *flux_in, double *flux_out
+void omp_sweep_c_(const int *p, const int *ng, const int *nang, const int *nx, const int *ny, const int *nz, const int *istep, const int *jstep, const int *kstep, const int *o, const int *noct, const int *cmom,
+                         const double *qtot, const double *ec, const double *mu, const double *hi, const double *hj, const double *hk, const double *vdelt, const double *dinv,
+                         double * restrict flux_i, double * restrict flux_j, double * restrict flux_k, double * restrict flux_in, double * restrict flux_out
     )
 {
 
@@ -98,17 +98,18 @@ void omp_sweep_c_(int *p, int *ng, int *nang, int *nx, int *ny, int *nz, int *is
         else
             k = (*nz) - sweep_order[*p-1].cells[c].k - 1;
 
-        for (int g = 0; g < *ng; g++)
-            for (int a = 0; a < *nang; a++)
+        for (int g = 0; g < (*ng); g++)
+            for (int a = 0; a < (*nang); a++)
             {
                 double source = qtot(0,i,j,k,g);
+                #pragma novector
                 for (int l = 1; l < *cmom; l++)
-                    source += ec(a,l,o) * qtot(l,i,j,k,g);
+                    source += ec(a,l,(*o)-1) * qtot(l,i,j,k,g);
 
                 double psi = source + (flux_i(a,g,j,k) * mu(a) * (*hi)) + (flux_j(a,g,i,k) * hj(a)) + (flux_k(a,g,i,j) * hk(a));
 
                 if (vdelt(g) != 0.0)
-                    psi += vdelt(g) * flux_in(a,g,i,j,k,o);
+                    psi += vdelt(g) * flux_in(a,g,i,j,k,(*o)-1);
 
                 psi *= dinv(a,i,j,k,g);
 
@@ -117,10 +118,9 @@ void omp_sweep_c_(int *p, int *ng, int *nang, int *nx, int *ny, int *nz, int *is
                 flux_k(a,g,i,j) = 2.0 * psi - flux_k(a,g,i,j);
 
                 if (vdelt(g) != 0.0)
-                    psi = 2.0*psi - flux_in(a,g,i,j,k,o);
+                    psi = 2.0*psi - flux_in(a,g,i,j,k,(*o)-1);
 
-                flux_out(a,g,i,j,k,o) = psi;
-
+                flux_out(a,g,i,j,k,(*o)-1) = psi;
             }
     }
 
