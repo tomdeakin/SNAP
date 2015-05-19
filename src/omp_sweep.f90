@@ -61,11 +61,11 @@ CONTAINS
 
 
   SUBROUTINE zero_edge_flux
-  !!$omp workshare
+  !$omp workshare
     flux_i(:,:,:,:) = 0.0
     flux_j(:,:,:,:) = 0.0
     flux_k(:,:,:,:) = 0.0
-  !!$omp end workshare
+  !$omp end workshare
   END SUBROUTINE zero_edge_flux
 
 
@@ -100,10 +100,10 @@ CONTAINS
 !_______________________________________________________________________
 
     
-    !!$omp workshare
+    !$omp workshare
     flux_in(:,:,:,:,:,:) = 0.0
     flux_out(:,:,:,:,:,:) = 0.0
-    !!$omp end workshare
+    !$omp end workshare
 
     CALL wtime ( t1 )
 
