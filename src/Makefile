@@ -108,7 +108,7 @@ omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90 omp_sweep_c.o
 	$(FORTRAN) $(FFLAGS) -c $<
 
 %.o:	%.c
-	icc $(FFLAGS) -std=c99 -g -O0 -c $<
+	icc $(FFLAGS) -std=c99 -c $<
 
 #
 # Cleanup
