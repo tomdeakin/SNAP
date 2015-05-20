@@ -13,20 +13,20 @@ SUBROUTINE translv
     ichunk, do_nested
 
   USE geom_module, ONLY: geom_alloc, geom_dealloc, dinv, param_calc,   &
-    nx, ny_gl, nz_gl, diag_setup, hi, hj, hk
+    nx, ny_gl, nz_gl, diag_setup, hi, hj, hk, dx, dy, dz
 
-  USE sn_module, ONLY: nang, noct, mu, eta, xi, cmom, ec, w
+  USE sn_module, ONLY: nang, noct, mu, eta, xi, cmom, ec, w, nmom, lma
 
   USE data_module, ONLY: ng, v, vdelt, mat, sigt, siga, slgg, src_opt, &
-    qim
+    qim, nmat, qi
 
   USE control_module, ONLY: nsteps, timedep, dt, oitm, otrdone,        &
-    control_alloc, control_dealloc, dfmxo, it_det
+    control_alloc, control_dealloc, dfmxo, it_det, iitm, epsi, tolr
 
   USE utils_module, ONLY: print_error, stop_run
 
   USE solvar_module, ONLY: solvar_alloc, ptr_in, ptr_out, t_xs, a_xs,  &
-    s_xs, flux, fluxm
+    s_xs, flux, fluxm, q2grp
 
   USE expxs_module, ONLY: expxs_reg, expxs_slgg
 
@@ -59,8 +59,10 @@ SUBROUTINE translv
     REAL(r_knd) :: ocl_update_tic, ocl_update_toc
     REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: ocl_angular_flux
     REAL(r_knd), DIMENSION(:,:,:,:), POINTER :: scalar_flux
+    REAL(r_knd), DIMENSION(:,:,:,:,:), POINTER :: scalar_flux_moments
     ALLOCATE( ocl_angular_flux(nang,nx,ny_gl,nz_gl,noct,ng) )
     ALLOCATE( scalar_flux(nx,ny_gl,nz_gl,ng) )
+    ALLOCATE( scalar_flux_moments((cmom-1),nx,ny_gl,nz_gl,ng) )
 !_______________________________________________________________________
 !
 ! Call for data allocations. Some allocations depend on the problem
@@ -120,12 +122,20 @@ SUBROUTINE translv
 
   CALL wtime ( ocl_first_copy_tic )
 
-  CALL copy_to_device ( nx, ny_gl, nz_gl, ng, nang, noct, cmom, ichunk, mu, ec, t_xs, w, ptr_in )
+  CALL set_ocl_problem ( nx, ny_gl, nz_gl, ng, nang, noct, cmom, nmom, &
+    ichunk, dx, dy, dz, dt, nmat, nsteps, oitm, iitm, epsi, tolr )
+  CALL copy_to_device ( mu, eta, xi, ec, t_xs, w, v, sigt, mat, qi, slgg, lma, q2grp, ptr_in )
 
   CALL wtime ( ocl_first_copy_toc )
 
   WRITE ( *, 212 ) ( ocl_first_copy_toc-ocl_first_copy_tic )
 
+!_______________________________________________________________________
+!
+!   Run the iteration loops on OpenCL device
+!_______________________________________________________________________
+
+  CALL ocl_iterations
 
 !_______________________________________________________________________
 !
@@ -140,9 +150,6 @@ SUBROUTINE translv
   tot_iits = 0
 
   time_loop: DO cy = 1, nsteps
-
-    ! Set the timestep for the OpenCL calls
-    CALL ocl_set_timestep ( cy )
 
     CALL wtime ( t3 )
 
@@ -224,18 +231,6 @@ SUBROUTINE translv
 
 !_______________________________________________________________________
 !
-!     Copy the dinv array just calculated to the device
-!_______________________________________________________________________
-
-      CALL wtime ( ocl_update_tic )
-      CALL copy_denom_to_device ( dinv )
-      CALL copy_dd_coefficients_to_device ( hi, hj, hk )
-      CALL copy_time_delta_to_device ( vdelt )
-      CALL wtime ( ocl_update_toc )
-      ocl_copy_time = ocl_copy_time + ocl_update_toc - ocl_update_tic
-
-!_______________________________________________________________________
-!
 !     Perform an outer iteration. Add up inners. Check convergence.
 !_______________________________________________________________________
 
@@ -251,37 +246,6 @@ SUBROUTINE translv
       IF ( otrdone ) EXIT outer_loop
 
     END DO outer_loop
-
-!_______________________________________________________________________
-!
-!   Check that the OpenCL sweep of the octant matches the original
-!_______________________________________________________________________
-
-  CALL get_output_flux ( ocl_angular_flux )
-
-  DO o = 1, noct
-    IF ( ALL ( ABS ( ocl_angular_flux(:,:,:,:,o,:) - ptr_out(:,:,:,:,o,:) ) < 1.0E-13_r_knd ) ) THEN
-      PRINT *, "Octant", o, "matched"
-    ELSE
-      PRINT *, "Octant", o, "did NOT match"
-      PRINT *, "Biggest error:", MAXVAL ( ABS ( ocl_angular_flux(:,:,:,:,o,:) - ptr_out(:,:,:,:,o,:) ) )
-    END IF
-  END DO
-
-!_______________________________________________________________________
-!
-!   Compute the Scalar Flux from the angular flux using OpenCL
-!_______________________________________________________________________
-
-  CALL ocl_scalar_flux
-  CALL get_scalar_flux( scalar_flux )
-
-  IF ( ALL ( ABS ( scalar_flux - flux ) < 1.0E-13_r_knd ) ) THEN
-    PRINT *, "Scalar flux matched"
-  ELSE
-    PRINT *, "Scalar flux did not match"
-  END IF
-
 !_______________________________________________________________________
 !
 !   Print the time cycle details. Add time cycle iterations.
@@ -319,20 +283,59 @@ SUBROUTINE translv
         * REAL( tot_iits, r_knd )
   tgrind = tslv*1.0E9_r_knd / tmp
 
+  WRITE ( *, 217 ) ( t7-t1 )
 
-  DEALLOCATE ( ocl_angular_flux )
-  DEALLOCATE ( scalar_flux )
 
 !_______________________________________________________________________
 !
-!   Print OpenCL timing information
+!   Check angular flux difference
 !_______________________________________________________________________
 
-    WRITE ( *, 213 ) ( ocl_copy_time )
-    WRITE ( *, 214 ) ( ocl_sweep_time )
-    WRITE ( *, 215 ) ( ocl_reduc_time )
-    WRITE ( *, 216 ) ( ocl_sweep_time*1.0E9_r_knd / tmp )
-    WRITE ( *, 217 ) ( t7-t1 )
+  CALL get_output_flux ( ocl_angular_flux )
+  PRINT *
+  PRINT *, "Checking angular flux"
+  PRINT *, "Max difference out:", MAXVAL ( ABS ( ptr_out-ocl_angular_flux ) )
+  PRINT *, "Max difference in:", MAXVAL ( ABS ( ptr_in-ocl_angular_flux ) )
+  PRINT *
+
+  PRINT *, "OCL SUM", SUM ( ocl_angular_flux )
+  PRINT *, "ORIG SUM", SUM ( ptr_out )
+
+
+!_______________________________________________________________________
+!
+!   Check that scalar and scalar moment fluxes match
+!_______________________________________________________________________
+
+  PRINT *
+  PRINT *, "Checking scalar and moments match"
+  PRINT *, "Tolerance", 100.0*epsi
+  PRINT *
+
+  CALL get_scalar_flux_trans( scalar_flux )
+
+  IF ( ALL ( ABS ( scalar_flux - flux ) < 100.0*epsi ) ) THEN
+    PRINT *, "Scalar flux matched"
+  ELSE
+    PRINT *, "Scalar flux did not match"
+  END IF
+  PRINT *, "Max error:", MAXVAL ( ABS ( scalar_flux - flux ) )
+
+  PRINT *
+
+  CALL get_scalar_flux_moments( scalar_flux_moments )
+  IF ( ALL ( ABS ( scalar_flux_moments - fluxm ) < 100.0*epsi ) ) THEN
+    PRINT *, "Scalar flux moments matched"
+  ELSE
+    PRINT *, "Scalar flux moments did not match"
+  END IF
+  PRINT *, "Max error:", MAXVAL ( ABS ( scalar_flux_moments - fluxm ) )
+  PRINT *
+
+  DEALLOCATE ( ocl_angular_flux )
+  DEALLOCATE ( scalar_flux )
+  DEALLOCATE ( scalar_flux_moments )
+
 
 !_______________________________________________________________________
 
@@ -359,7 +362,7 @@ SUBROUTINE translv
   214 FORMAT( 'OpenCL sweeps + scalar reduction: ', F10.3, 's')
   215 FORMAT( 'OpenCL flux reduction time: ', F10.3, 's')
   216 FORMAT( 'OpenCL grind time (for resident sweep): ', F10.3, 'ns')
-  217 FORMAT( 'Total time (orig + OpenCL): ', F10.3, 's')
+  217 FORMAT( 'Original time: ', F10.3, 's')
 
 !_______________________________________________________________________
 !_______________________________________________________________________
