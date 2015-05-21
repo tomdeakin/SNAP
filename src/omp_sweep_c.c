@@ -113,19 +113,9 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
     #pragma omp parallel for
     for (int c = 0; c < sweep_order[p].num_cells; c++)
     {
-        int i, j, k;
-        if (istep > 0)
-            i = sweep_order[p].cells[c].i;
-        else
-            i = nx - sweep_order[p].cells[c].i - 1;
-        if (jstep > 0)
-            j = sweep_order[p].cells[c].j;
-        else
-            j = ny - sweep_order[p].cells[c].j - 1;
-        if (kstep > 0)
-            k = sweep_order[p].cells[c].k;
-        else
-            k = nz - sweep_order[p].cells[c].k - 1;
+        const int i = (istep > 0) ? sweep_order[p].cells[c].i : nx - sweep_order[p].cells[c].i - 1;
+        const int j = (jstep > 0) ? sweep_order[p].cells[c].j : ny - sweep_order[p].cells[c].j - 1;
+        const int k = (kstep > 0) ? sweep_order[p].cells[c].k : nz - sweep_order[p].cells[c].k - 1;
 
         // #pragma simd
         #pragma ivdep
