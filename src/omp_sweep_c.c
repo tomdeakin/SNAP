@@ -87,8 +87,11 @@ plane *compute_sweep_order(int nx, int ny, int nz)
 
 #define dinv(a,i,j,k,g) dinv[(a)+(nang*(i))+(nang*nx*(j))+(nang*nx*ny*(k))+(nang*nx*ny*nz*(g))]
 
+#define t_xs(i,j,k,g) t_xs[(i)+(nx*(j))+(nx*ny*(k))+(nx*ny*nz*(g))]
+
 void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, int *istep_, int *jstep_, int *kstep_, int *o_, int *noct_, int *cmom_,
                          const double * restrict qtot, const double * restrict ec, const double * restrict mu, const double * restrict hi, const double * restrict hj, const double * restrict hk, const double * restrict vdelt, const double * restrict dinv,
+                         const double * restrict t_xs,
                          double * restrict flux_i, double * restrict flux_j, double * restrict flux_k, double * restrict flux_in, double * restrict flux_out
     )
 {
@@ -117,10 +120,10 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
         const int j = (jstep > 0) ? sweep_order[p].cells[c].j : ny - sweep_order[p].cells[c].j - 1;
         const int k = (kstep > 0) ? sweep_order[p].cells[c].k : nz - sweep_order[p].cells[c].k - 1;
 
-        // #pragma simd
         #pragma ivdep
         for (int g = 0; g < ng; g++)
             #pragma ivdep
+            #pragma simd
             for (int a = 0; a < nang; a++)
             {
                 double source = qtot(0,i,j,k,g);
@@ -135,17 +138,59 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
 
                 psi *= dinv(a,i,j,k,g);
 
-                flux_i(a,g,j,k) = 2.0 * psi - flux_i(a,g,j,k);
-                flux_j(a,g,i,k) = 2.0 * psi - flux_j(a,g,i,k);
-                flux_k(a,g,i,j) = 2.0 * psi - flux_k(a,g,i,j);
-
-                // TODO FIXUP
-                // TODO REDUCTION
-
+                double tmp_flux_i = 2.0 * psi - flux_i(a,g,j,k);
+                double tmp_flux_j = 2.0 * psi - flux_j(a,g,i,k);
+                double tmp_flux_k = 2.0 * psi - flux_k(a,g,i,j);
 
                 if (vdelt(g) != 0.0)
                     psi = 2.0*psi - flux_in(a,g,i,j,k,o);
 
+                // FIXUP
+                double zeros[4] = {1.0, 1.0, 1.0, 1.0};
+                int num_to_fix = 4;
+                for (int fix = 0; fix < 4; fix++)
+                {
+                    if (tmp_flux_i < 0.0) zeros[0] = 0.0;
+                    if (tmp_flux_j < 0.0) zeros[1] = 0.0;
+                    if (tmp_flux_k < 0.0) zeros[2] = 0.0;
+                    if (psi < 0.0) zeros[3] = 0.0;
+
+                    if (num_to_fix == zeros[0] + zeros[1] + zeros[2] + zeros[3])
+                        break;
+
+                    num_to_fix = zeros[0] + zeros[1] + zeros[2] + zeros[3];
+
+                    psi = flux_i(a,g,j,k)*mu(a)*(*hi)*(1.0+zeros[0]) + flux_j(a,g,j,k)*hj(a)*(1.0+zeros[1]) + flux_k(a,g,i,j)*hk(a)*(1.0+zeros[2]);
+                    if (vdelt(g) != 0.0)
+                        psi += vdelt(g) * flux_in(a,g,i,j,k,o) *  (1.0+zeros[3]);
+                    psi = 0.5*psi + source;
+                    double recalc_denom = t_xs(i,j,k,g);
+                    recalc_denom += mu(a) * (*hi) * zeros[0];
+                    recalc_denom += hj(a) * zeros[1];
+                    recalc_denom += hk(a) * zeros[2];
+                    recalc_denom += vdelt(g) * zeros[3];
+
+                    if (recalc_denom > 1.0E-12)
+                        psi /= recalc_denom;
+                    else
+                        psi = 0.0;
+
+                    tmp_flux_i = 2.0 * psi - flux_i(a,g,j,k);
+                    tmp_flux_j = 2.0 * psi - flux_j(a,g,i,k);
+                    tmp_flux_k = 2.0 * psi - flux_k(a,g,i,j);
+                    if (vdelt(g) != 0.0)
+                        psi = 2.0*psi - flux_in(a,g,i,j,k,o);
+
+                }
+
+                tmp_flux_i *= zeros[0];
+                tmp_flux_j *= zeros[1];
+                tmp_flux_k *= zeros[2];
+                psi *= zeros[3];
+
+                flux_i(a,g,j,k) = tmp_flux_i;
+                flux_j(a,g,i,k) = tmp_flux_j;
+                flux_k(a,g,i,j) = tmp_flux_k;
                 flux_out(a,g,i,j,k,o) = psi;
             }
     }

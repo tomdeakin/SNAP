@@ -18,7 +18,7 @@ MODULE omp_sweep_module
 
   USE sn_module, ONLY: nang, noct, ec, cmom, mu
 
-  USE solvar_module, ONLY: qtot
+  USE solvar_module, ONLY: qtot, t_xs
 
   USE time_module, ONLY: wtime
 
@@ -170,7 +170,7 @@ CONTAINS
       wavefront: DO p = 1, nplanes
 
       CALL omp_sweep_c( p, ng, nang, nx, ny_gl, nz_gl, istep, jstep, kstep, o, noct, cmom, &
-                         qtot, ec, mu, hi, hj, hk, vdelt, dinv, &
+                         qtot, ec, mu, hi, hj, hk, vdelt, dinv, t_xs, &
                          flux_i, flux_j, flux_k, flux_in, flux_out )
 
       ! CALL THE C!!!!!!
