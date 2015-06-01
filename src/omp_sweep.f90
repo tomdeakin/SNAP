@@ -84,7 +84,7 @@ CONTAINS
     INTEGER(i_knd) :: i, j, k, l
     REAL(r_knd) :: source, psi
     TYPE(plane), ALLOCATABLE, DIMENSION(:) :: planes
-    REAL(r_knd) :: t1, t2
+    REAL(r_knd) :: t1, t2, t3
 
 !_______________________________________________________________________
 !
@@ -242,6 +242,8 @@ CONTAINS
 
     END DO octants
 
+    CALL wtime ( t2 )
+
     ! Reduce to the scalar flux
     scalar_flux(:,:,:,:) = 0.0
     DO o = 1, noct
@@ -261,7 +263,7 @@ CONTAINS
     END DO
 
 
-    CALL wtime ( t2 )
+    CALL wtime ( t3 )
 
     ! Deallocate the plane list
     DO a = p, nplanes
@@ -270,6 +272,7 @@ CONTAINS
     DEALLOCATE ( planes )
 
     PRINT *, "Sweep took", t2-t1
+    PRINT *, "Reduction took", t3-t2
 
   END SUBROUTINE omp_sweep
 
