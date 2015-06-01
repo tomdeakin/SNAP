@@ -1,54 +1,36 @@
 #
 # Build SNAP
 #
-OPT = yes
-FFLAGS = -O3
-FFLAG2 =
 
-FORTRAN = mpif90
-#FORTRAN = ifort
-#FORTRAN = gfortran
-#FORTRAN = bg-gfortran
+TARGET	= snap
 
-#ifeq ($(FORTRAN),ifort)
-ifeq ($(FORTRAN),mpif90)
-  TARGET = snap
-  FFLAGS = -O3 -openmp -xhost
-  FFLAG2 =
-  ifeq ($(OPT),no)
-    TARGET = snap_db
-    FFLAGS = -g -O0 -check bounds -traceback -openmp
-    FFLAG2 =
-  endif
+ifndef COMPILER
+	MESSAGE=select a compiler to compiler in OpenMP, e.g. make COMPILER=INTEL
 endif
 
-#ifeq ($(FORTRAN),gfortran)
-#  TARGET = snapg
-#  FFLAGS = -O3
-#  FFLAG2 =
-#  ifeq ($(OPT),no)
-#    TARGET = snapg_db
-#    FFLAGS = -g -O0 -fbounds-check
-#    FFLAG2 = -fbacktrace
-#  endif
-#endif
 
-#RDIST = no
-#ifeq ($(FORTRAN),bf-gfortran)
-#  TARGET = snap_byfl
-#  FFLAGS = -O3 -bf-all-ops -bf-by-func
-#  FFLAG2 =
-#  ifeq ($(OPT),no)
-#    TARGET = snap_byfl_db
-#    FFLAGS = -O0 -g -fbounds-check -bf-all-ops -bf-by-func
-#    FFLAG2 = -fbacktrace
-#  endif
-#  ifeq ($(RDIST),yes)
-#    TARGET = snap_byfl_r
-#    FFLAGS = -O3 -bf-all-ops -bf-by-func -bf-reuse-dist
-#    FFLAG2 =
-#  endif
-#endif
+OMP_INTEL	= -openmp
+OMP_CRAY	=
+OMP_GNU		= -fopenmp
+
+OMP=$(OMP_$(COMPILER))
+
+FFLAGS_		= -O3
+FFLAGS_CRAY	= -O3
+FFLAGS_INTEL	= -O3
+FFLAGS_GNU	= -O3
+
+CFLAGS_		= -O3
+CFLAGS_CRAY	= -O3
+CFLAGS_INTEL	= -O3 -std=c99
+CFLAGS_GNU	= -O3 -std=c99
+
+MPI_COMPILER	= mpif90
+C_MPI_COMPILER	= mpicc
+
+
+FFLAGS=$(FFLAGS_$(COMPILER)) $(OMP) $(OPTIONS)
+CFLAGS=$(CFLAGS_$(COMPILER)) $(OMP) $(OPTIONS)
 
 .SUFFIXES:	.f90 .o
 
@@ -64,7 +46,8 @@ SRCS = global.f90 snap_main.f90 utils.f90 version.f90 plib.f90 geom.f90 \
        omp_sweep.f90
 
 $(TARGET) :	$(OBJS)
-		$(FORTRAN) $(FFLAGS) $(FFLAG2) -o $@ $(OBJS)
+		$(MPI_COMPILER) $(FFLAGS) -o $@ $(OBJS)
+		echo $(MESSAGE);
 
 snap_main.o :	global.o utils.o version.o input.o setup.o output.o time.o \
 		dealloc.o plib.o control.o omp_sweep.o
@@ -72,7 +55,7 @@ utils.o :	global.o dealloc.o plib.o
 version.o :	global.o
 plib.o :	global.o time.o
 geom.o :	global.o
-sn.o :	global.o
+sn.o :		global.o
 data.o :	global.o
 control.o :	global.o
 input.o :	global.o plib.o geom.o sn.o data.o control.o utils.o time.o
@@ -98,17 +81,16 @@ time.o :	global.o
 mms.o:	global.o geom.o sn.o data.o control.o plib.o
 
 omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90 omp_sweep_c.o
-	$(FORTRAN) $(FFLAGS) -vec-report7 omp_sweep.f90 -c $<
 
 
 #
 # Fortran rule
 #
 %.o:	%.f90
-	$(FORTRAN) $(FFLAGS) -c $<
+	$(MPI_COMPILER) $(FFLAGS) -c $<
 
 %.o:	%.c
-	icc $(FFLAGS) -std=c99 -c -vec-report7 $<
+	$(C_MPI_COMPILER) $(CFLAGS) -c $<
 
 #
 # Cleanup
