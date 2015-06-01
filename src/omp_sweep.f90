@@ -16,7 +16,7 @@ MODULE omp_sweep_module
 
   USE data_module, ONLY: ng, vdelt
 
-  USE sn_module, ONLY: nang, noct, ec, cmom, mu
+  USE sn_module, ONLY: nang, noct, ec, cmom, mu, w
 
   USE solvar_module, ONLY: qtot, t_xs
 
@@ -39,6 +39,7 @@ MODULE omp_sweep_module
   ! Flux arrays
   REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: flux_in, flux_out
   REAL(r_knd), DIMENSION(:,:,:,:), POINTER :: flux_i, flux_j, flux_k
+  REAL(r_knd), DIMENSION(:,:,:,:), POINTER :: scalar_flux
 
   PUBLIC :: omp_sweep_alloc, omp_sweep_dealloc, omp_sweep
 
@@ -51,12 +52,14 @@ CONTAINS
     ALLOCATE ( flux_i(nang,ng,ny_gl,nz_gl) )
     ALLOCATE ( flux_j(nang,ng,nx,nz_gl) )
     ALLOCATE ( flux_k(nang,ng,nx,ny_gl) )
+    ALLOCATE ( scalar_flux(nx,ny_gl,nz_gl,ng) )
   END SUBROUTINE omp_sweep_alloc
 
 
   SUBROUTINE omp_sweep_dealloc
     DEALLOCATE ( flux_in, flux_out )
     DEALLOCATE ( flux_i, flux_j, flux_k )
+    DEALLOCATE ( scalar_flux )
   END SUBROUTINE omp_sweep_dealloc
 
 
@@ -229,8 +232,6 @@ CONTAINS
 
         !     END DO angles
 
-        !     ! Reduce to the scalar flux
-        !     ! TODO
 
         !   END DO groups
         ! END DO cells
@@ -240,6 +241,25 @@ CONTAINS
 
 
     END DO octants
+
+    ! Reduce to the scalar flux
+    scalar_flux(:,:,:,:) = 0.0
+    DO o = 1, noct
+    DO k = 1, nz_gl
+      DO j = 1, ny_gl
+        DO i = 1, nx
+          DO g = 1, ng
+            IF (vdelt(g) /= 0.0) THEN
+              scalar_flux(i,j,k,g) = scalar_flux(i,j,k,g) + SUM(w(:)*(0.5 *(flux_in(:,g,i,j,k,o) + flux_out(:,g,i,j,k,o))))
+            ELSE
+              scalar_flux(i,j,k,g) = scalar_flux(i,j,k,g) + SUM(w(:)*flux_out(:,g,i,j,k,o))
+            END IF
+          END DO
+        END DO
+      END DO
+    END DO
+    END DO
+
 
     CALL wtime ( t2 )
 

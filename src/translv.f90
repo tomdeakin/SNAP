@@ -34,7 +34,7 @@ SUBROUTINE translv
 
   USE time_module, ONLY: tslv, wtime, tgrind, tparam
 
-  USE omp_sweep_module, ONLY: flux_out, transpose_angular_flux
+  USE omp_sweep_module, ONLY: flux_out, transpose_angular_flux, scalar_flux
 
   IMPLICIT NONE
 !_______________________________________________________________________
@@ -249,6 +249,7 @@ SUBROUTINE translv
 
   CALL transpose_angular_flux(flux_out, ptr_in)
   PRINT *, "Angular flux differs by", MAXVAL(ABS(ptr_out-ptr_in))
+  PRINT *, "Scalar flux differs by", MAXVAL(ABS(flux-scalar_flux))
 
 !_______________________________________________________________________
 
