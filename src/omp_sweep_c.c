@@ -123,7 +123,7 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
         #pragma ivdep
         for (int g = 0; g < ng; g++)
             #pragma ivdep
-            #pragma simd
+            //#pragma simd
             for (int a = 0; a < nang; a++)
             {
                 double source = qtot(0,i,j,k,g);
@@ -146,6 +146,7 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
                     psi = 2.0*psi - flux_in(a,g,i,j,k,o);
 
                 // FIXUP
+/*
                 double zeros[4] = {1.0, 1.0, 1.0, 1.0};
                 int num_to_fix = 4;
                 for (int fix = 0; fix < 4; fix++)
@@ -187,7 +188,7 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
                 tmp_flux_j *= zeros[1];
                 tmp_flux_k *= zeros[2];
                 psi *= zeros[3];
-
+*/
                 flux_i(a,g,j,k) = tmp_flux_i;
                 flux_j(a,g,i,k) = tmp_flux_j;
                 flux_k(a,g,i,j) = tmp_flux_k;
