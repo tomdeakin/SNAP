@@ -151,9 +151,6 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
 
                 double zeros[4];// = {1.0, 1.0, 1.0, 1.0};
 
-                #pragma novector
-                for (int fix = 0; fix < 4; fix++)
-                    zeros[fix] = 1.0;
 
                 #pragma unroll (4)
                 #pragma novector
