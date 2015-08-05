@@ -122,8 +122,8 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
 
         #pragma ivdep
         for (int g = 0; g < ng; g++)
-            #pragma ivdep
-            //#pragma simd
+            //#pragma ivdep
+            #pragma omp simd
             for (int a = 0; a < nang; a++)
             {
                 double source = qtot(0,i,j,k,g);
@@ -146,24 +146,52 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
                     psi = 2.0*psi - flux_in(a,g,i,j,k,o);
 
                 // FIXUP
-/*
-                double zeros[4] = {1.0, 1.0, 1.0, 1.0};
+
                 int num_to_fix = 4;
+
+                double zeros[4];// = {1.0, 1.0, 1.0, 1.0};
+
+                #pragma novector
+                for (int fix = 0; fix < 4; fix++)
+                    zeros[fix] = 1.0;
+
+                #pragma unroll (4)
+                #pragma novector
                 for (int fix = 0; fix < 4; fix++)
                 {
-                    if (tmp_flux_i < 0.0) zeros[0] = 0.0;
-                    if (tmp_flux_j < 0.0) zeros[1] = 0.0;
-                    if (tmp_flux_k < 0.0) zeros[2] = 0.0;
-                    if (psi < 0.0) zeros[3] = 0.0;
+                    if (tmp_flux_i < 0.0)
+                        zeros[0] = 0.0;
+                    else
+                        zeros[0] = 1.0;
+
+                    if (tmp_flux_j < 0.0)
+                        zeros[1] = 0.0;
+                    else
+                        zeros[1] = 1.0;
+
+                    if (tmp_flux_k < 0.0)
+                        zeros[2] = 0.0;
+                    else
+                        zeros[2] = 1.0;
+
+                    if (psi < 0.0)
+                        zeros[3] = 0.0;
+                    else
+                        zeros[3] = 1.0;
 
                     if (num_to_fix == zeros[0] + zeros[1] + zeros[2] + zeros[3])
-                        break;
+                        continue;
 
                     num_to_fix = zeros[0] + zeros[1] + zeros[2] + zeros[3];
 
-                    psi = flux_i(a,g,j,k)*mu(a)*(*hi)*(1.0+zeros[0]) + flux_j(a,g,j,k)*hj(a)*(1.0+zeros[1]) + flux_k(a,g,i,j)*hk(a)*(1.0+zeros[2]);
+                    psi =
+                        flux_i(a,g,j,k)*mu(a)*(*hi)*(1.0+zeros[0]) +
+                        flux_j(a,g,j,k)*hj(a)*(1.0+zeros[1]) +
+                        flux_k(a,g,i,j)*hk(a)*(1.0+zeros[2]);
+
                     if (vdelt(g) != 0.0)
                         psi += vdelt(g) * flux_in(a,g,i,j,k,o) *  (1.0+zeros[3]);
+
                     psi = 0.5*psi + source;
                     double recalc_denom = t_xs(i,j,k,g);
                     recalc_denom += mu(a) * (*hi) * zeros[0];
@@ -179,6 +207,7 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
                     tmp_flux_i = 2.0 * psi - flux_i(a,g,j,k);
                     tmp_flux_j = 2.0 * psi - flux_j(a,g,i,k);
                     tmp_flux_k = 2.0 * psi - flux_k(a,g,i,j);
+
                     if (vdelt(g) != 0.0)
                         psi = 2.0*psi - flux_in(a,g,i,j,k,o);
 
@@ -188,7 +217,7 @@ void omp_sweep_c_(int *p_, int *ng_, int *nang_, int *nx_, int *ny_, int *nz_, i
                 tmp_flux_j *= zeros[1];
                 tmp_flux_k *= zeros[2];
                 psi *= zeros[3];
-*/
+
                 flux_i(a,g,j,k) = tmp_flux_i;
                 flux_j(a,g,i,k) = tmp_flux_j;
                 flux_k(a,g,i,j) = tmp_flux_k;

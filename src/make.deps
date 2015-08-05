@@ -1,0 +1,187 @@
+
+version.o :  \
+	global.o
+
+setup.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	utils.o \
+	sn.o \
+	mms.o \
+	geom.o \
+	global.o
+
+dim1_sweep.o :  \
+	control.o \
+	data.o \
+	geom.o \
+	global.o \
+	sn.o
+
+global.o : 
+
+expxs.o :  \
+	data.o \
+	geom.o \
+	global.o \
+	sn.o
+
+omp_sweep.o :  \
+	time.o \
+	data.o \
+	global.o \
+	sn.o \
+	geom.o \
+	solvar.o
+
+dealloc.o :  \
+	control.o \
+	data.o \
+	solvar.o \
+	sn.o \
+	mms.o \
+	geom.o \
+	global.o
+
+utils.o :  \
+	dealloc.o \
+	plib.o \
+	global.o
+
+sweep.o :  \
+	control.o \
+	plib.o \
+	data.o \
+	solvar.o \
+	octsweep.o \
+	sn.o \
+	geom.o \
+	global.o
+
+input.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	utils.o \
+	sn.o \
+	geom.o \
+	global.o
+
+snap_main.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	version.o \
+	global.o \
+	setup.o \
+	input.o \
+	dealloc.o \
+	output.o \
+	omp_sweep.o \
+	utils.o
+
+translv.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	outer.o \
+	expxs.o \
+	utils.o \
+	solvar.o \
+	omp_sweep.o \
+	sn.o \
+	geom.o \
+	global.o
+
+dim3_sweep.o :  \
+	control.o \
+	plib.o \
+	data.o \
+	sn.o \
+	geom.o \
+	global.o
+
+plib.o :  \
+	time.o \
+	global.o
+
+control.o :  \
+	global.o
+
+output.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	utils.o \
+	solvar.o \
+	sn.o \
+	mms.o \
+	geom.o \
+	global.o
+
+outer.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	expxs.o \
+	global.o \
+	sn.o \
+	inner.o \
+	geom.o \
+	solvar.o
+
+mms.o :  \
+	control.o \
+	plib.o \
+	data.o \
+	sn.o \
+	geom.o \
+	global.o
+
+time.o :  \
+	global.o
+
+solvar.o :  \
+	control.o \
+	plib.o \
+	data.o \
+	sn.o \
+	geom.o \
+	global.o
+
+sn.o :  \
+	global.o
+
+octsweep.o :  \
+	control.o \
+	data.o \
+	dim3_sweep.o \
+	global.o \
+	sn.o \
+	dim1_sweep.o \
+	geom.o \
+	solvar.o
+
+data.o :  \
+	global.o
+
+inner.o :  \
+	control.o \
+	time.o \
+	plib.o \
+	data.o \
+	omp_sweep.o \
+	global.o \
+	sweep.o \
+	sn.o \
+	geom.o \
+	solvar.o
+
+geom.o :  \
+	global.o

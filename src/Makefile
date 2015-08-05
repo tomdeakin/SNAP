@@ -47,49 +47,17 @@ SRCS = global.f90 snap_main.f90 utils.f90 version.f90 plib.f90 geom.f90 \
 
 $(TARGET) :	$(OBJS)
 		$(MPI_COMPILER) $(FFLAGS) -o $@ $(OBJS)
-		echo $(MESSAGE);
+		@echo $(MESSAGE);
 
-snap_main.o :	global.o utils.o version.o input.o setup.o output.o time.o \
-		dealloc.o plib.o control.o omp_sweep.o
-utils.o :	global.o dealloc.o plib.o
-version.o :	global.o
-plib.o :	global.o time.o
-geom.o :	global.o
-sn.o :		global.o
-data.o :	global.o
-control.o :	global.o
-input.o :	global.o plib.o geom.o sn.o data.o control.o utils.o time.o
-setup.o :	global.o geom.o sn.o data.o control.o mms.o utils.o time.o \
-		plib.o
-dealloc.o :	global.o sn.o data.o mms.o geom.o solvar.o control.o
-translv.o :	global.o plib.o geom.o sn.o data.o control.o utils.o \
-		solvar.o expxs.o outer.o time.o
-solvar.o :	global.o plib.o geom.o sn.o data.o control.o
-outer.o :	global.o geom.o sn.o data.o solvar.o control.o inner.o \
-		time.o plib.o expxs.o
-expxs.o :	global.o geom.o sn.o data.o
-inner.o :	global.o geom.o sn.o data.o control.o solvar.o sweep.o \
-		time.o plib.o
-sweep.o :	global.o geom.o sn.o data.o control.o octsweep.o solvar.o
-octsweep.o :	global.o geom.o sn.o data.o control.o solvar.o \
-		dim1_sweep.o dim3_sweep.o
-dim1_sweep.o :	global.o geom.o sn.o data.o control.o
-dim3_sweep.o :	global.o plib.o geom.o sn.o data.o control.o
-output.o :	global.o geom.o sn.o data.o control.o utils.o solvar.o \
-		mms.o time.o plib.o
-time.o :	global.o
-mms.o:	global.o geom.o sn.o data.o control.o plib.o
-
-omp_sweep.o:	global.o geom.o data.o sn.o omp_sweep.f90 omp_sweep_c.o
-
+include make.deps
 
 #
 # Fortran rule
 #
-%.o:	%.f90
+%.o:	%.f90 Makefile
 	$(MPI_COMPILER) $(FFLAGS) -c $<
 
-%.o:	%.c
+%.o:	%.c Makefile
 	$(C_MPI_COMPILER) $(CFLAGS) -c $<
 
 #
