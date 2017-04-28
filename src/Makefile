@@ -87,6 +87,9 @@ ifeq ($(TARGET),knlsnap)
   FORTRAN=mpiifort
   FFLAGS = -O3 -xMIC-AVX512 -align array256byte $(OMPFLAG)
   PP = fpp
+  ifeq ($(OPT),no)
+    FFLAGS = -O0 -g -check bounds -traceback $(OMPFLAG)
+  endif
 endif
 
 .SUFFIXES:	.F90 .f90 .o
