@@ -11,7 +11,20 @@ MODULE sn_module
 
   USE global_module, ONLY: i_knd, r_knd, zero, one
 
+  USE ISO_C_BINDING
+
   IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+! C function to allocate to 2MB boundaries
+!-----------------------------------------------------------------------
+  INTERFACE
+    TYPE(C_PTR) FUNCTION ALLOC(len) BIND(C,name="alloc")
+      IMPORT :: C_PTR
+      IMPLICIT NONE
+      INTEGER :: len
+    END FUNCTION
+  END INTERFACE
 
   PUBLIC
 
@@ -68,6 +81,8 @@ MODULE sn_module
     INTEGER(i_knd), INTENT(IN) :: ndimen
 
     INTEGER(i_knd), INTENT(INOUT) :: istat
+
+    TYPE(C_PTR) :: tmp_ptr
 !_______________________________________________________________________
 !
 !   Allocate cosines and weights
@@ -76,9 +91,16 @@ MODULE sn_module
     cmom = nmom
     noct = 2
 
-    ALLOCATE( mu(nang), w(nang), wmu(nang), eta(nang), weta(nang),     &
-      xi(nang), wxi(nang), STAT=istat )
+    ALLOCATE( w(nang), wmu(nang), weta(nang),     &
+      wxi(nang), STAT=istat )
     IF ( istat > 0 ) RETURN
+
+    tmp_ptr = ALLOC(nang)
+    CALL C_F_POINTER(tmp_ptr, mu, (/ nang /))
+    tmp_ptr = ALLOC(nang)
+    CALL C_F_POINTER(tmp_ptr, eta, (/ nang /))
+    tmp_ptr = ALLOC(nang)
+    CALL C_F_POINTER(tmp_ptr, xi, (/ nang /))
 
     w = zero
     mu = zero; wmu = zero
