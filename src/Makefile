@@ -156,7 +156,7 @@ alloc.o :	alloc.c
 	$(FORTRAN) $(FFLAGS) -c $<
 
 %.o:	%.c
-	icc -O3 -xMIC-AVX512 -c $<
+	icc -std=c11 -O3 -xMIC-AVX512 -c $<
 
 #
 # Cleanup
