@@ -22,7 +22,20 @@ MODULE solvar_module
 
   USE control_module, ONLY: timedep, angcpy
 
+  USE ISO_C_BINDING
+
   IMPLICIT NONE
+
+!-----------------------------------------------------------------------
+! C function to allocate to 2MB boundaries
+!-----------------------------------------------------------------------
+  INTERFACE
+    TYPE(C_PTR) FUNCTION ALLOC(len) BIND(C,name="alloc")
+      IMPORT :: C_PTR
+      IMPLICIT NONE
+      INTEGER :: len
+    END FUNCTION
+  END INTERFACE
 
   PUBLIC
 
@@ -93,6 +106,7 @@ MODULE solvar_module
 !-----------------------------------------------------------------------
 
     INTEGER(i_knd), INTENT(OUT) :: ierr
+    TYPE(C_PTR) :: tmp_ptr
 !_______________________________________________________________________
 !
 !   Allocate ptr_in/out if needed. If angcpy=1, only allocate for one
@@ -107,7 +121,9 @@ MODULE solvar_module
 
     IF ( timedep == 1 ) THEN
       IF ( angcpy == 1 ) THEN
-        ALLOCATE( ptr_in(nang,nx,ny,nz,noct,ng), STAT=ierr )
+        tmp_ptr = ALLOC( nang*nx*ny*nz*noct*ng )
+        CALL C_F_POINTER( tmp_ptr, ptr_in, (/ nang,nx,ny,nz,noct,ng /) )
+        !ALLOCATE( ptr_in(nang,nx,ny,nz,noct,ng), STAT=ierr )
       ELSE
         ALLOCATE( ptr_in(nang,nx,ny,nz,noct,ng),                       &
           ptr_out(nang,nx,ny,nz,noct,ng), STAT=ierr )
