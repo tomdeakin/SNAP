@@ -204,9 +204,18 @@ MODULE solvar_module
 !   Working arrays
 !_______________________________________________________________________
 
-    ALLOCATE( psii(nang,ny,nz,ng), psij(nang,ichunk,nz,ng),            &
-      psik(nang,ichunk,ny,ng), STAT=ierr )
-    IF ( ierr /= 0 ) RETURN
+    tmp_ptr = ALLOC( nang*ny*nz*ng )
+    CALL C_F_POINTER( tmp_ptr, psii, (/ nang, ny, nz, ng /) )
+
+    tmp_ptr = ALLOC( nang*ichunk*nz*ng )
+    CALL C_F_POINTER( tmp_ptr, psij, (/ nang, ichunk, nz, ng /) )
+
+    tmp_ptr = ALLOC( nang*ichunk*ny*ng )
+    CALL C_F_POINTER( tmp_ptr, psik, (/ nang, ichunk, ny, ng /) )
+
+    !ALLOCATE( psii(nang,ny,nz,ng), psij(nang,ichunk,nz,ng),            &
+    !  psik(nang,ichunk,ny,ng), STAT=ierr )
+    !IF ( ierr /= 0 ) RETURN
 
     psii = zero
     psij = zero
