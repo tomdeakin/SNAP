@@ -83,6 +83,12 @@ ifeq ($(TARGET),ksnap)
   endif
 endif
 
+ifeq ($(TARGET),knlsnap)
+  FORTRAN=mpiifort
+  FFLAGS = -O3 -xMIC-AVX512 -align array256byte $(OMPFLAG)
+  PP = fpp
+endif
+
 .SUFFIXES:	.F90 .f90 .o
 
 OBJS = global.o snap_main.o utils.o version.o plib.o geom.o sn.o \
