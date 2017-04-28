@@ -94,7 +94,7 @@ endif
 OBJS = global.o snap_main.o utils.o version.o plib.o geom.o sn.o \
        data.o control.o input.o setup.o dealloc.o translv.o solvar.o \
        outer.o expxs.o inner.o sweep.o octsweep.o dim1_sweep.o dim3_sweep.o \
-       output.o time.o mms.o analyze.o thrd_comm.o mkba_sweep.o
+       output.o time.o mms.o analyze.o thrd_comm.o mkba_sweep.o alloc.o
 
 SRCS = global.f90 snap_main.f90 utils.f90 version.f90 plib.F90 geom.f90 \
        sn.f90 data.f90 control.f90 input.f90 setup.f90 dealloc.f90 \
@@ -140,6 +140,8 @@ outer.o :	global.o geom.o sn.o data.o solvar.o control.o inner.o \
 translv.o :	global.o plib.o geom.o sn.o data.o control.o utils.o \
 		solvar.o expxs.o outer.o time.o thrd_comm.o analyze.o
 
+alloc.o :	alloc.c
+
 #
 # Fortran rules
 #
@@ -149,6 +151,9 @@ translv.o :	global.o plib.o geom.o sn.o data.o control.o utils.o \
 
 %.o:	%.f90
 	$(FORTRAN) $(FFLAGS) -c $<
+
+%.o:	%.c
+	icc -O3 -xMIC-AVX512 -c $<
 
 #
 # Cleanup
