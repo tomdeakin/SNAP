@@ -87,7 +87,7 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
     INTEGER(i_knd) :: ist, iclo, ichi, jst, jlo, jhi, kst, klo, khi, k,&
-      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk
+      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk, id1
 
     LOGICAL(l_knd) :: receive
 
@@ -273,8 +273,13 @@ MODULE dim3_sweep_module
         psii(:,j,k) = two*psi - psii(:,j,k)
         psij(:,ic,k) = two*psi - psij(:,ic,k)
         IF ( ndimen == 3 ) psik(:,ic,j) = two*psi - psik(:,ic,j)
-        IF ( vdelt/=zero .AND. update_ptr )                            &
-          ptr_out(:,i,j,k) = two*psi - ptr_in(:,i,j,k)
+        IF ( vdelt/=zero .AND. update_ptr ) THEN
+          !$OMP SIMD ALIGNED(ptr_out,ptr_in:64)
+          !DIR$ VECTOR NONTEMPORAL(ptr_out,ptr_in)
+          DO id1 = 1, d1
+            ptr_out(d1,i,j,k) = two*psi(d1) - ptr_in(d1,i,j,k)
+          END DO
+        END IF
 
       ELSE
 !_______________________________________________________________________
@@ -344,8 +349,13 @@ MODULE dim3_sweep_module
         psii(:,j,k) = fxhv(:,1) * hv(:,1)
         psij(:,ic,k) = fxhv(:,2) * hv(:,2)
         IF ( ndimen == 3 ) psik(:,ic,j) = fxhv(:,3) * hv(:,3)
-        IF ( vdelt/=zero .AND. update_ptr )                            &
-          ptr_out(:,i,j,k) = fxhv(:,4) * hv(:,4)
+        IF ( vdelt/=zero .AND. update_ptr ) THEN
+          !DIR$ VECTOR NONTEMPORAL(ptr_out)
+          !$OMP SIMD ALIGNED(ptr_out:64)
+          DO id1 = 1, d1
+            ptr_out(d1,i,j,k) = fxhv(d1,4) * hv(d1,4)
+          END DO
+        END IF
 
       END IF
 !_______________________________________________________________________
