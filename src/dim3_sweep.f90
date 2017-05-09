@@ -277,7 +277,7 @@ MODULE dim3_sweep_module
           !$OMP SIMD ALIGNED(ptr_out,ptr_in:64)
           !DIR$ VECTOR NONTEMPORAL(ptr_out,ptr_in)
           DO id1 = 1, d1
-            ptr_out(d1,i,j,k) = two*psi(d1) - ptr_in(d1,i,j,k)
+            ptr_out(id1,i,j,k) = two*psi(id1) - ptr_in(id1,i,j,k)
           END DO
         END IF
 
@@ -353,7 +353,7 @@ MODULE dim3_sweep_module
           !DIR$ VECTOR NONTEMPORAL(ptr_out)
           !$OMP SIMD ALIGNED(ptr_out:64)
           DO id1 = 1, d1
-            ptr_out(d1,i,j,k) = fxhv(d1,4) * hv(d1,4)
+            ptr_out(id1,i,j,k) = fxhv(id1,4) * hv(id1,4)
           END DO
         END IF
 
