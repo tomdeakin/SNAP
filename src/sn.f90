@@ -24,6 +24,12 @@ MODULE sn_module
       IMPLICIT NONE
       INTEGER :: len
     END FUNCTION
+
+    SUBROUTINE ALLOC_FREE(cptr) BIND(C,name="alloc_free")
+      IMPORT :: C_PTR
+      IMPLICIT NONE
+      TYPE(C_PTR) :: cptr
+    END SUBROUTINE
   END INTERFACE
 
   PUBLIC
@@ -66,6 +72,9 @@ MODULE sn_module
 
   REAL(r_knd), ALLOCATABLE, DIMENSION(:,:,:) :: ec
 
+  TYPE(C_PTR) :: mu_ptr
+  TYPE(C_PTR) :: eta_ptr
+  TYPE(C_PTR) :: xi_ptr
 
   CONTAINS
 
@@ -82,7 +91,6 @@ MODULE sn_module
 
     INTEGER(i_knd), INTENT(INOUT) :: istat
 
-    TYPE(C_PTR) :: tmp_ptr
 !_______________________________________________________________________
 !
 !   Allocate cosines and weights
@@ -95,12 +103,12 @@ MODULE sn_module
       wxi(nang), STAT=istat )
     IF ( istat > 0 ) RETURN
 
-    tmp_ptr = ALLOC(nang)
-    CALL C_F_POINTER(tmp_ptr, mu, (/ nang /))
-    tmp_ptr = ALLOC(nang)
-    CALL C_F_POINTER(tmp_ptr, eta, (/ nang /))
-    tmp_ptr = ALLOC(nang)
-    CALL C_F_POINTER(tmp_ptr, xi, (/ nang /))
+    mu_ptr = ALLOC(nang)
+    CALL C_F_POINTER(mu_ptr, mu, (/ nang /))
+    eta_ptr = ALLOC(nang)
+    CALL C_F_POINTER(eta_ptr, eta, (/ nang /))
+    xi_ptr = ALLOC(nang)
+    CALL C_F_POINTER(xi_ptr, xi, (/ nang /))
 
     w = zero
     mu = zero; wmu = zero
@@ -137,7 +145,10 @@ MODULE sn_module
 !-----------------------------------------------------------------------
 !_______________________________________________________________________ 
 
-    DEALLOCATE( mu, w, eta, xi, wmu, weta, wxi, ec, lma )
+    DEALLOCATE( w, wmu, weta, wxi, ec, lma )
+    CALL ALLOC_FREE( mu_ptr )
+    CALL ALLOC_FREE( eta_ptr )
+    CALL ALLOC_FREE( xi_ptr )
 !_______________________________________________________________________
 !_______________________________________________________________________
 

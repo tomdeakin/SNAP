@@ -35,6 +35,12 @@ MODULE solvar_module
       IMPLICIT NONE
       INTEGER :: len
     END FUNCTION
+
+    SUBROUTINE ALLOC_FREE(cptr) BIND(C,name="alloc_free")
+      IMPORT :: C_PTR
+      IMPLICIT NONE
+      TYPE(C_PTR) :: cptr
+    END SUBROUTINE
   END INTERFACE
 
   PUBLIC
@@ -93,6 +99,7 @@ MODULE solvar_module
 
   REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: ptr_in, ptr_out
 
+  TYPE(C_PTR) :: psii_ptr, psij_ptr, psik_ptr, ptr_in_ptr
 
   CONTAINS
 
@@ -106,7 +113,6 @@ MODULE solvar_module
 !-----------------------------------------------------------------------
 
     INTEGER(i_knd), INTENT(OUT) :: ierr
-    TYPE(C_PTR) :: tmp_ptr
 !_______________________________________________________________________
 !
 !   Allocate ptr_in/out if needed. If angcpy=1, only allocate for one
@@ -121,8 +127,8 @@ MODULE solvar_module
 
     IF ( timedep == 1 ) THEN
       IF ( angcpy == 1 ) THEN
-        tmp_ptr = ALLOC( nang*nx*ny*nz*noct*ng )
-        CALL C_F_POINTER( tmp_ptr, ptr_in, (/ nang,nx,ny,nz,noct,ng /) )
+        ptr_in_ptr = ALLOC( nang*nx*ny*nz*noct*ng )
+        CALL C_F_POINTER( ptr_in_ptr, ptr_in, (/ nang,nx,ny,nz,noct,ng /) )
         !ALLOCATE( ptr_in(nang,nx,ny,nz,noct,ng), STAT=ierr )
       ELSE
         ALLOCATE( ptr_in(nang,nx,ny,nz,noct,ng),                       &
@@ -204,14 +210,14 @@ MODULE solvar_module
 !   Working arrays
 !_______________________________________________________________________
 
-    tmp_ptr = ALLOC( nang*ny*nz*ng )
-    CALL C_F_POINTER( tmp_ptr, psii, (/ nang, ny, nz, ng /) )
+    psii_ptr = ALLOC( nang*ny*nz*ng )
+    CALL C_F_POINTER( psii_ptr, psii, (/ nang, ny, nz, ng /) )
 
-    tmp_ptr = ALLOC( nang*ichunk*nz*ng )
-    CALL C_F_POINTER( tmp_ptr, psij, (/ nang, ichunk, nz, ng /) )
+    psij_ptr = ALLOC( nang*ichunk*nz*ng )
+    CALL C_F_POINTER( psij_ptr, psij, (/ nang, ichunk, nz, ng /) )
 
-    tmp_ptr = ALLOC( nang*ichunk*ny*ng )
-    CALL C_F_POINTER( tmp_ptr, psik, (/ nang, ichunk, ny, ng /) )
+    psik_ptr = ALLOC( nang*ichunk*ny*ng )
+    CALL C_F_POINTER( psik_ptr, psik, (/ nang, ichunk, ny, ng /) )
 
     !ALLOCATE( psii(nang,ny,nz,ng), psij(nang,ichunk,nz,ng),            &
     !  psik(nang,ichunk,ny,ng), STAT=ierr )
@@ -271,15 +277,17 @@ MODULE solvar_module
 !-----------------------------------------------------------------------
 !_______________________________________________________________________
 
-    DEALLOCATE( ptr_in )
     IF ( angcpy==2 .OR. timedep==0 ) DEALLOCATE( ptr_out )
     DEALLOCATE( flux0, flux0po, flux0pi, fluxm )
     DEALLOCATE( q2grp0, q2grpm, qtot )
     DEALLOCATE( t_xs, a_xs, s_xs )
-    DEALLOCATE( psii, psij, psik )
     DEALLOCATE( jb_in, jb_out, kb_in, kb_out )
     DEALLOCATE( flkx, flky, flkz )
     DEALLOCATE( fmin, fmax, pop )
+    CALL ALLOC_FREE( ptr_in_ptr )
+    CALL ALLOC_FREE( psii_ptr )
+    CALL ALLOC_FREE( psij_ptr )
+    CALL ALLOC_FREE( psik_ptr )
 !_______________________________________________________________________
 !_______________________________________________________________________
 
