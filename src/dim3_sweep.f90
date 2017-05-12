@@ -332,8 +332,8 @@ MODULE dim3_sweep_module
 !         Exit loop when all angles are fixed up, i.e., no change in hv
 !_______________________________________________________________________
 
-            IF ( sum_hv(a) == SUM( hv(a,:) ) ) EXIT fixup_loop
-            sum_hv(a) = SUM( hv(a,:) )
+            IF ( sum_hv(a) == ( hv(a,1)+hv(a,2)+hv(a,3)+hv(a,4)) ) EXIT fixup_loop
+            sum_hv(a) = hv(a,1) + hv(a,2) + hv(a,3) + hv(a,4)
 !_______________________________________________________________________
 !
 !         Recompute balance equation numerator and denominator and get
