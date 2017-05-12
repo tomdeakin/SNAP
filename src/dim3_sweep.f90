@@ -94,6 +94,7 @@ MODULE dim3_sweep_module
     REAL(r_knd), DIMENSION(nang) :: sum_hv
 
     REAL(r_knd), DIMENSION(nang) :: psi, pc, den
+    !DIR$ ATTRIBUTES ALIGN:64 :: psi, pc, den
 
     REAL(r_knd), DIMENSION(nang,4) :: hv, fxhv
 
@@ -263,8 +264,9 @@ MODULE dim3_sweep_module
 ! not the case using the vector notation.
 !_______________________________________________________________________
 
-  !$OMP SIMD REDUCTION(+:cell_flux0, cell_fluxm) &
-  !$OMP& ALIGNED(mu,eta,xi,psii,psij,psik,ptr_in,ptr_out:64)
+  !$OMP SIMD REDUCTION(+:cell_flux0, cell_fluxm)                                     &
+  !$OMP& ALIGNED(mu,eta,xi,psii,psij,psik,ptr_in,ptr_out:64)                         &
+  !$OMP& ALIGNED(psi,pc,den:64)
   !DIR$ VECTOR NONTEMPORAL(ptr_out)
       a_loop: DO a = 1, nang
 !_______________________________________________________________________
