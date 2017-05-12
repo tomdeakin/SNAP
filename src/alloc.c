@@ -12,7 +12,6 @@ double * alloc(int *len) {
 }
 
 void alloc_free(double ** p)  {
-  printf("About to free %p\n", *p);
   free(*p);
 }
 
