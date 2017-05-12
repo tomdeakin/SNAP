@@ -87,15 +87,21 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
     INTEGER(i_knd) :: ist, iclo, ichi, jst, jlo, jhi, kst, klo, khi, k,&
-      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk, id1
+      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk, id1, a
 
     LOGICAL(l_knd) :: receive
 
-    REAL(r_knd) :: sum_hv
+    REAL(r_knd), DIMENSION(nang) :: sum_hv
 
     REAL(r_knd), DIMENSION(nang) :: psi, pc, den
 
     REAL(r_knd), DIMENSION(nang,4) :: hv, fxhv
+
+! Only required because OpenMP cannot cope
+! "Subobjects are not allowed in this OpenMP* clause; a named variable must be
+! specified"
+    REAL(r_knd) :: cell_flux0
+    REAL(r_knd), DIMENSION(cmom-1) :: cell_fluxm
 !_______________________________________________________________________
 !
 !   Set the receive control flag to true. Will set to false within the
@@ -147,6 +153,7 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
       i = (ich-1)*ichunk + ic
+
 !_______________________________________________________________________
 !
 !     Dummy operation to match real transport code where nx is not
@@ -160,16 +167,10 @@ MODULE dim3_sweep_module
       END IF
 !_______________________________________________________________________
 !
-!     Compute the angular source. Add the MMS contribution if necessary.
+! Set the boundary conditions ahead of the solve - don't want MPI calls
+! in the middle of the kernel.
 !_______________________________________________________________________
 
-      psi = qtot(1,ic,j,k)
-
-      DO l = 2, cmom
-        psi = psi + ec(:,l)*qtot(l,ic,j,k)
-      END DO
-
-      IF ( src_opt == 3 ) psi = psi + qim(:,i,j,k,oct,g)
 !_______________________________________________________________________
 !
 !     Left/right boundary conditions, always vacuum. Dummy operations
@@ -250,38 +251,63 @@ MODULE dim3_sweep_module
       END IF
 !_______________________________________________________________________
 !
+! Zero the temp scalar flux variables for this cell.
+!_______________________________________________________________________
+      cell_flux0 = zero
+      cell_fluxm = zero
+!_______________________________________________________________________
+!
+! Loop over the angles in this octant. All compute is done in this loop
+! to good vectorisation and cache reuse. This also removes the need for
+! Fortran vector notation, and ensures the loops are fused which is
+! not the case using the vector notation.
+!_______________________________________________________________________
+
+  !$OMP SIMD REDUCTION(+:cell_flux0, cell_fluxm) ALIGNED(ptr_out:64)
+  !DIR$ VECTOR NONTEMPORAL(ptr_out)
+      a_loop: DO a = 1, nang
+!_______________________________________________________________________
+!
+!     Compute the angular source. Add the MMS contribution if necessary.
+!_______________________________________________________________________
+
+        psi(a) = qtot(1,ic,j,k)
+
+        DO l = 2, cmom
+          psi(a) = psi(a) + ec(a,l)*qtot(l,ic,j,k)
+        END DO
+
+        IF ( src_opt == 3 ) psi(a) = psi(a) + qim(a,i,j,k,oct,g)
+!_______________________________________________________________________
+!
 !     Compute initial solution
 !_______________________________________________________________________
 
-      IF ( vdelt /= zero ) THEN
-        pc = ( psi + psii(:,j,k)*mu*hi + psij(:,ic,k)*eta*hj +         &
-          psik(:,ic,j)*xi*hk + ptr_in(:,i,j,k)*vdelt ) * dinv(:,ic,j,k)
-      ELSE
-        pc = ( psi + psii(:,j,k)*mu*hi + psij(:,ic,k)*eta*hj +         &
-          psik(:,ic,j)*xi*hk ) * dinv(:,ic,j,k)
-      END IF
+        IF ( vdelt /= zero ) THEN
+          pc(a) = ( psi(a) + psii(a,j,k)*mu(a)*hi + psij(a,ic,k)*eta(a)*hj +         &
+            psik(a,ic,j)*xi(a)*hk + ptr_in(a,i,j,k)*vdelt ) * dinv(a,ic,j,k)
+        ELSE
+          pc(a) = ( psi(a) + psii(a,j,k)*mu(a)*hi + psij(a,ic,k)*eta(a)*hj +         &
+            psik(a,ic,j)*xi(a)*hk ) * dinv(a,ic,j,k)
+        END IF
 !_______________________________________________________________________
 !
 !     Compute outgoing edges with diamond difference, no negative flux
 !     fixup
 !_______________________________________________________________________
 
-      IF ( fixup == 0 ) THEN
-
-        psi = pc
-
-        psii(:,j,k) = two*psi - psii(:,j,k)
-        psij(:,ic,k) = two*psi - psij(:,ic,k)
-        IF ( ndimen == 3 ) psik(:,ic,j) = two*psi - psik(:,ic,j)
-        IF ( vdelt/=zero .AND. update_ptr ) THEN
-          !$OMP SIMD ALIGNED(ptr_out,ptr_in:64)
-          !DIR$ VECTOR NONTEMPORAL(ptr_out,ptr_in)
-          DO id1 = 1, d1
-            ptr_out(id1,i,j,k) = two*psi(id1) - ptr_in(id1,i,j,k)
-          END DO
-        END IF
-
-      ELSE
+        IF ( fixup == 0 ) THEN
+  
+          psi(a) = pc(a)
+  
+          psii(a,j,k) = two*psi(a) - psii(a,j,k)
+          psij(a,ic,k) = two*psi(a) - psij(a,ic,k)
+          IF ( ndimen == 3 ) psik(a,ic,j) = two*psi(a) - psik(a,ic,j)
+          IF ( vdelt/=zero .AND. update_ptr ) THEN
+            ptr_out(a,i,j,k) = two*psi(a) - ptr_in(a,i,j,k)
+          END IF
+  
+        ELSE
 !_______________________________________________________________________
 !
 !       Use negative flux fixup. Compute outgoing edges. If negative,
@@ -290,79 +316,109 @@ MODULE dim3_sweep_module
 !       need fixup first.
 !_______________________________________________________________________
 
-        hv = one
-        sum_hv = SUM( hv )
-
-        fixup_loop: DO
-
-          fxhv(:,1) = two*pc - psii(:,j,k)
-          fxhv(:,2) = two*pc - psij(:,ic,k)
-          IF ( ndimen == 3 ) fxhv(:,3) = two*pc - psik(:,ic,j)
-          IF ( vdelt /= zero ) fxhv(:,4) = two*pc - ptr_in(:,i,j,k)
-
-          WHERE ( fxhv < zero ) hv = zero
+          hv(a,:) = one
+          sum_hv(a) = SUM( hv(a,:) )
+  
+          fixup_loop: DO
+  
+            fxhv(a,1) = two*pc(a) - psii(a,j,k)
+            fxhv(a,2) = two*pc(a) - psij(a,ic,k)
+            IF ( ndimen == 3 ) fxhv(a,3) = two*pc(a) - psik(a,ic,j)
+            IF ( vdelt /= zero ) fxhv(a,4) = two*pc(a) - ptr_in(a,i,j,k)
+  
+            WHERE ( fxhv(a,:) < zero ) hv(a,:) = zero
 !_______________________________________________________________________
 !
 !         Exit loop when all angles are fixed up, i.e., no change in hv
 !_______________________________________________________________________
 
-          IF ( sum_hv == SUM( hv ) ) EXIT fixup_loop
-          sum_hv = SUM( hv )
+            IF ( sum_hv(a) == SUM( hv(a,:) ) ) EXIT fixup_loop
+            sum_hv(a) = SUM( hv(a,:) )
 !_______________________________________________________________________
 !
 !         Recompute balance equation numerator and denominator and get
 !         new cell average flux
 !_______________________________________________________________________
 
-          IF ( vdelt /= zero ) THEN
-            pc = psi + half * ( psii(:,j,k)*mu*hi*(one+hv(:,1)) +      &
-                                psij(:,ic,k)*eta*hj*(one+hv(:,2)) +    &
-                                psik(:,ic,j)*xi*hk*(one+hv(:,3)) +     &
-                                ptr_in(:,i,j,k)*vdelt*(one+hv(:,4)) )
-            den = t_xs(i,j,k) + mu*hi*hv(:,1) + eta*hj*hv(:,2) +       &
-              xi*hk*hv(:,3) + vdelt*hv(:,4)
-          ELSE
-            pc = psi + half * ( psii(:,j,k)*mu*hi*(one+hv(:,1)) +      &
-                                psij(:,ic,k)*eta*hj*(one+hv(:,2)) +    &
-                                psik(:,ic,j)*xi*hk*(one+hv(:,3)) )
-            den = t_xs(i,j,k) + mu*hi*hv(:,1) + eta*hj*hv(:,2) +       &
-              xi*hk*hv(:,3)
-          END IF
-
-          WHERE( pc <= zero ) den = zero
-
-          WHERE( den < tolr )
-            pc = zero
-            den = one
-          END WHERE
-
-          pc = pc / den
-
-        END DO fixup_loop
+            IF ( vdelt /= zero ) THEN
+              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
+                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
+                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) +     &
+                                  ptr_in(a,i,j,k)*vdelt*(one+hv(a,4)) )
+              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
+                xi(a)*hk*hv(a,3) + vdelt*hv(a,4)
+            ELSE
+              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
+                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
+                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) )
+              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
+                xi(a)*hk*hv(a,3)
+            END IF
+  
+            IF ( pc(a) <= zero ) den(a) = zero
+  
+            IF( den(a) < tolr ) THEN
+              pc(a) = zero
+              den(a) = one
+            END IF
+  
+            pc(a) = pc(a) / den(a)
+  
+          END DO fixup_loop
 !_______________________________________________________________________
 !
 !       Fixup done, compute edges with resolved center
 !_______________________________________________________________________
-
-        psi = pc
-
-        psii(:,j,k) = fxhv(:,1) * hv(:,1)
-        psij(:,ic,k) = fxhv(:,2) * hv(:,2)
-        IF ( ndimen == 3 ) psik(:,ic,j) = fxhv(:,3) * hv(:,3)
-        IF ( vdelt/=zero .AND. update_ptr ) THEN
-          !DIR$ VECTOR NONTEMPORAL(ptr_out)
-          !$OMP SIMD ALIGNED(ptr_out:64)
-          DO id1 = 1, d1
-            ptr_out(id1,i,j,k) = fxhv(id1,4) * hv(id1,4)
-          END DO
+  
+          psi(a) = pc(a)
+  
+          psii(a,j,k) = fxhv(a,1) * hv(a,1)
+          psij(a,ic,k) = fxhv(a,2) * hv(a,2)
+          IF ( ndimen == 3 ) psik(a,ic,j) = fxhv(a,3) * hv(a,3)
+          IF ( vdelt/=zero .AND. update_ptr ) THEN
+            ptr_out(a,i,j,k) = fxhv(a,4) * hv(a,4)
+          END IF
+  
         END IF
+!_______________________________________________________________________
+!
+!     Compute the flux moments
+!_______________________________________________________________________
 
+        psi(a) = w(a)*psi(a)
+  
+        cell_flux0 = cell_flux0 + psi(a)
+        DO l = 1, cmom-1
+          cell_fluxm(l) = cell_fluxm(l) + ( ec(a,l+1)*psi(a) )
+        END DO
+!_______________________________________________________________________
+!
+! End the angle loop
+! The remaining statements need all the angles
+!_______________________________________________________________________
+
+      END DO a_loop
+!_______________________________________________________________________
+!
+! Save the scalar flux
+!_______________________________________________________________________
+
+      IF ( oct == 1 ) THEN
+        flux0(i,j,k) = cell_flux0
+        DO l = 1, cmom-1
+          fluxm(l,i,j,k) = cell_fluxm(l)
+        END DO
+      ELSE
+        flux0(i,j,k) = flux0(i,j,k) + cell_flux0
+        DO l = 1, cmom-1
+          fluxm(l,i,j,k) = fluxm(l,i,j,k) + cell_fluxm(l)
+        END DO
       END IF
 !_______________________________________________________________________
 !
 !     Save edge fluxes (dummy if checks for unused non-vacuum BCs)
 !_______________________________________________________________________
-
+ 
       IF ( j == jhi ) THEN
         IF ( jd==2 .AND. lasty ) THEN
           CONTINUE
@@ -390,24 +446,7 @@ MODULE dim3_sweep_module
       flkx(i+id-1,j,k) = flkx(i+id-1,j,k) + ist*SUM( wmu*psii(:,j,k) )
       flky(i,j+jd-1,k) = flky(i,j+jd-1,k) + jst*SUM( weta*psij(:,ic,k) )
       flkz(i,j,k+kd-1) = flkz(i,j,k+kd-1) + kst*SUM( wxi*psik(:,ic,j) )
-!_______________________________________________________________________
-!
-!     Compute the flux moments
-!_______________________________________________________________________
 
-      psi = w*psi
-
-      IF ( oct == 1 ) THEN
-        flux0(i,j,k) = SUM( psi )
-        DO l = 1, cmom-1
-          fluxm(l,i,j,k) = SUM( ec(:,l+1)*psi )
-        END DO
-      ELSE
-        flux0(i,j,k) = flux0(i,j,k) + SUM( psi )
-        DO l = 1, cmom-1
-          fluxm(l,i,j,k) = fluxm(l,i,j,k) + SUM( ec(:,l+1)*psi )
-        END DO
-      END IF
 !_______________________________________________________________________
 !
 !     Calculate dummy min and max scalar fluxes (not used elsewhere
