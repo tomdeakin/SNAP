@@ -264,10 +264,11 @@ MODULE dim3_sweep_module
 ! not the case using the vector notation.
 !_______________________________________________________________________
 
+  !DIR$ VECTOR NONTEMPORAL(ptr_out)
+  !DIR$ ASSUME(MOD(d1,8) == 0)
   !$OMP SIMD REDUCTION(+:cell_flux0, cell_fluxm)                                     &
   !$OMP& ALIGNED(mu,eta,xi,psii,psij,psik,ptr_in,ptr_out:64)                         &
   !$OMP& ALIGNED(psi,pc,den:64)
-  !DIR$ VECTOR NONTEMPORAL(ptr_out)
       a_loop: DO a = 1, nang
 !_______________________________________________________________________
 !
