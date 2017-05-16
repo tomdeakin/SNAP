@@ -25,7 +25,7 @@
   epsi=1.0E-5
   fluxp=0
   scatp=0
-  fixup=1
+  fixup=0
   popout=1
   angcpy=1
 /
