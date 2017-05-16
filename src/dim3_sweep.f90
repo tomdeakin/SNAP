@@ -299,7 +299,7 @@ MODULE dim3_sweep_module
 !     fixup
 !_______________________________________________________________________
 
-        IF ( fixup == 0 ) THEN
+        !IF ( fixup == 0 ) THEN
   
           psi(a) = pc(a)
   
@@ -310,79 +310,79 @@ MODULE dim3_sweep_module
             ptr_out(a,i,j,k) = two*psi(a) - ptr_in(a,i,j,k)
           END IF
   
-        ELSE
-!_______________________________________________________________________
+!        ELSE
+!!_______________________________________________________________________
+!!
+!!       Use negative flux fixup. Compute outgoing edges. If negative,
+!!       set to zero and rebalance. Multi-pass until all negativities
+!!       eliminated. Initialize counters and determine angles that will
+!!       need fixup first.
+!!_______________________________________________________________________
 !
-!       Use negative flux fixup. Compute outgoing edges. If negative,
-!       set to zero and rebalance. Multi-pass until all negativities
-!       eliminated. Initialize counters and determine angles that will
-!       need fixup first.
-!_______________________________________________________________________
-
-          hv(a,:) = one
-          sum_hv(a) = SUM( hv(a,:) )
-  
-          fixup_loop: DO
-  
-            fxhv(a,1) = two*pc(a) - psii(a,j,k)
-            fxhv(a,2) = two*pc(a) - psij(a,ic,k)
-            IF ( ndimen == 3 ) fxhv(a,3) = two*pc(a) - psik(a,ic,j)
-            IF ( vdelt /= zero ) fxhv(a,4) = two*pc(a) - ptr_in(a,i,j,k)
-  
-            WHERE ( fxhv(a,:) < zero ) hv(a,:) = zero
-!_______________________________________________________________________
+!          hv(a,:) = one
+!          sum_hv(a) = SUM( hv(a,:) )
+!  
+!          fixup_loop: DO
+!  
+!            fxhv(a,1) = two*pc(a) - psii(a,j,k)
+!            fxhv(a,2) = two*pc(a) - psij(a,ic,k)
+!            IF ( ndimen == 3 ) fxhv(a,3) = two*pc(a) - psik(a,ic,j)
+!            IF ( vdelt /= zero ) fxhv(a,4) = two*pc(a) - ptr_in(a,i,j,k)
+!  
+!            WHERE ( fxhv(a,:) < zero ) hv(a,:) = zero
+!!_______________________________________________________________________
+!!
+!!         Exit loop when all angles are fixed up, i.e., no change in hv
+!!_______________________________________________________________________
 !
-!         Exit loop when all angles are fixed up, i.e., no change in hv
-!_______________________________________________________________________
-
-            IF ( sum_hv(a) == ( hv(a,1)+hv(a,2)+hv(a,3)+hv(a,4)) ) EXIT fixup_loop
-            sum_hv(a) = hv(a,1) + hv(a,2) + hv(a,3) + hv(a,4)
-!_______________________________________________________________________
+!            IF ( sum_hv(a) == ( hv(a,1)+hv(a,2)+hv(a,3)+hv(a,4)) ) EXIT fixup_loop
+!            sum_hv(a) = hv(a,1) + hv(a,2) + hv(a,3) + hv(a,4)
+!!_______________________________________________________________________
+!!
+!!         Recompute balance equation numerator and denominator and get
+!!         new cell average flux
+!!_______________________________________________________________________
 !
-!         Recompute balance equation numerator and denominator and get
-!         new cell average flux
-!_______________________________________________________________________
-
-            IF ( vdelt /= zero ) THEN
-              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
-                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
-                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) +     &
-                                  ptr_in(a,i,j,k)*vdelt*(one+hv(a,4)) )
-              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
-                xi(a)*hk*hv(a,3) + vdelt*hv(a,4)
-            ELSE
-              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
-                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
-                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) )
-              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
-                xi(a)*hk*hv(a,3)
-            END IF
-  
-            IF ( pc(a) <= zero ) den(a) = zero
-  
-            IF( den(a) < tolr ) THEN
-              pc(a) = zero
-              den(a) = one
-            END IF
-  
-            pc(a) = pc(a) / den(a)
-  
-          END DO fixup_loop
-!_______________________________________________________________________
-!
-!       Fixup done, compute edges with resolved center
-!_______________________________________________________________________
-  
-          psi(a) = pc(a)
-  
-          psii(a,j,k) = fxhv(a,1) * hv(a,1)
-          psij(a,ic,k) = fxhv(a,2) * hv(a,2)
-          IF ( ndimen == 3 ) psik(a,ic,j) = fxhv(a,3) * hv(a,3)
-          IF ( vdelt/=zero .AND. update_ptr ) THEN
-            ptr_out(a,i,j,k) = fxhv(a,4) * hv(a,4)
-          END IF
-  
-        END IF
+!            IF ( vdelt /= zero ) THEN
+!              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
+!                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
+!                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) +     &
+!                                  ptr_in(a,i,j,k)*vdelt*(one+hv(a,4)) )
+!              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
+!                xi(a)*hk*hv(a,3) + vdelt*hv(a,4)
+!            ELSE
+!              pc(a) = psi(a) + half * ( psii(a,j,k)*mu(a)*hi*(one+hv(a,1)) +      &
+!                                  psij(a,ic,k)*eta(a)*hj*(one+hv(a,2)) +    &
+!                                  psik(a,ic,j)*xi(a)*hk*(one+hv(a,3)) )
+!              den(a) = t_xs(i,j,k) + mu(a)*hi*hv(a,1) + eta(a)*hj*hv(a,2) +       &
+!                xi(a)*hk*hv(a,3)
+!            END IF
+!  
+!            IF ( pc(a) <= zero ) den(a) = zero
+!  
+!            IF( den(a) < tolr ) THEN
+!              pc(a) = zero
+!              den(a) = one
+!            END IF
+!  
+!            pc(a) = pc(a) / den(a)
+!  
+!          END DO fixup_loop
+!!_______________________________________________________________________
+!!
+!!       Fixup done, compute edges with resolved center
+!!_______________________________________________________________________
+!  
+!          psi(a) = pc(a)
+!  
+!          psii(a,j,k) = fxhv(a,1) * hv(a,1)
+!          psij(a,ic,k) = fxhv(a,2) * hv(a,2)
+!          IF ( ndimen == 3 ) psik(a,ic,j) = fxhv(a,3) * hv(a,3)
+!          IF ( vdelt/=zero .AND. update_ptr ) THEN
+!            ptr_out(a,i,j,k) = fxhv(a,4) * hv(a,4)
+!          END IF
+!  
+!        END IF
 !_______________________________________________________________________
 !
 !     Compute the flux moments
