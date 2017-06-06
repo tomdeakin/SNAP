@@ -306,8 +306,10 @@ MODULE dim3_sweep_module
   
           psii(a,j,k) = two*psi(a) - psii(a,j,k)
           psij(a,ic,k) = two*psi(a) - psij(a,ic,k)
-          IF ( ndimen == 3 ) psik(a,ic,j) = two*psi(a) - psik(a,ic,j)
-          IF ( vdelt/=zero .AND. update_ptr ) THEN
+          !IF ( ndimen == 2 )
+          psik(a,ic,j) = two*psi(a) - psik(a,ic,j)
+          !IF ( vdelt/=zero .AND. update_ptr ) THEN
+          IF ( update_ptr ) THEN
             ptr_out(a,i,j,k) = two*psi(a) - ptr_in(a,i,j,k)
           END IF
   
