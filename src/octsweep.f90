@@ -22,7 +22,7 @@ MODULE octsweep_module
 
   USE solvar_module, ONLY: psii, qtot, ptr_in, ptr_out, psij, psik,    &
     flux0, fluxm, jb_in, jb_out, kb_in, kb_out, flkx, flky, flkz, t_xs,&
-    fmin, fmax
+    fmin, fmax, lblk, nblk
 
   USE thrd_comm_module, ONLY: no_op_lock_control
 
@@ -119,18 +119,19 @@ MODULE octsweep_module
 
         IF ( ndimen == 1 ) THEN
 
-          CALL dim1_sweep ( id, d1, d2, d3, d4, oct, g, psii(:,1,1,g), &
-            qtot(:,:,1,1,ich,g), ec(:,:,oct), vdelt(g),                &
-            ptr_in(:,:,:,:,d5,d6), ptr_out(:,:,:,:,d5,d6),             &
-            dinv(:,:,1,1,ich,g), flux0(:,1,1,g), fluxm(:,:,1,1,g), wmu,&
-            flkx(:,1,1,g), t_xs(:,1,1,g), fmin(g), fmax(g) )
+          !CALL dim1_sweep ( id, d1, d2, d3, d4, oct, g, psii(:,1,1,g), &
+          !  qtot(:,:,1,1,ich,g), ec(:,:,oct), vdelt(g),                &
+          !  ptr_in(:,:,:,:,d5,d6), ptr_out(:,:,:,:,d5,d6),             &
+          !  dinv(:,:,1,1,ich,g), flux0(:,1,1,g), fluxm(:,:,1,1,g), wmu,&
+          !  flkx(:,1,1,g), t_xs(:,1,1,g), fmin(g), fmax(g) )
 
         ELSE
 
           CALL dim3_sweep ( ich, id, d1, d2, d3, d4, jd, kd, oct, g, t,&
-            iop, reqs, szreq, psii(:,:,:,g), psij(:,:,:,g),            &
-            psik(:,:,:,g), qtot(:,:,:,:,ich,g), ec(:,:,oct), vdelt(g), &
-            ptr_in(:,:,:,:,d5,d6), ptr_out(:,:,:,:,d5,d6),             &
+            iop, reqs, szreq, lblk, nblk,                              &
+            psii(:,:,:,:,g), psij(:,:,:,:,g), psik(:,:,:,:,g),         &
+            qtot(:,:,:,:,ich,g), ec(:,:,oct),                          &
+            vdelt(g), ptr_in(:,:,:,:,d5,d6), ptr_out(:,:,:,:,d5,d6),   &
             dinv(:,:,:,:,ich,g), flux0(:,:,:,g), fluxm(:,:,:,:,g),     &
             jb_in(:,:,:,g), jb_out(:,:,:,g), kb_in(:,:,:,g),           &
             kb_out(:,:,:,g), wmu, weta, wxi, flkx(:,:,:,g),            &
@@ -147,13 +148,13 @@ MODULE octsweep_module
 
     ELSE
 
-      CALL mkba_sweep ( d1, d2, d3, d4, d5, jd, kd, g, t, reqs, szreq, &
-        psii(:,:,:,g), psij(:,:,:,g), psik(:,:,:,g), qtot(:,:,:,:,:,g),&
-        ec, vdelt(g), ptr_in(:,:,:,:,:,d6), ptr_out(:,:,:,:,:,d6),     &
-        dinv(:,:,:,:,:,g), flux0(:,:,:,g), fluxm(:,:,:,:,g),           &
-        jb_in(:,:,:,g), jb_out(:,:,:,g), kb_in(:,:,:,g),               &
-        kb_out(:,:,:,g), wmu, weta, wxi, flkx(:,:,:,g), flky(:,:,:,g), &
-        flkz(:,:,:,g), t_xs(:,:,:,g), fmin(g), fmax(g) )
+      !CALL mkba_sweep ( d1, d2, d3, d4, d5, jd, kd, g, t, reqs, szreq, &
+      !  psii(:,:,:,g), psij(:,:,:,g), psik(:,:,:,g), qtot(:,:,:,:,:,g),&
+      !  ec, vdelt(g), ptr_in(:,:,:,:,:,d6), ptr_out(:,:,:,:,:,d6),     &
+      !  dinv(:,:,:,:,:,g), flux0(:,:,:,g), fluxm(:,:,:,:,g),           &
+      !  jb_in(:,:,:,g), jb_out(:,:,:,g), kb_in(:,:,:,g),               &
+      !  kb_out(:,:,:,g), wmu, weta, wxi, flkx(:,:,:,g), flky(:,:,:,g), &
+      !  flkz(:,:,:,g), t_xs(:,:,:,g), fmin(g), fmax(g) )
 
     END IF
 !_______________________________________________________________________

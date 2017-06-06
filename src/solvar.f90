@@ -90,8 +90,10 @@ MODULE solvar_module
   REAL(r_knd), ALLOCATABLE, DIMENSION(:) :: fmin, fmax, pop
 
   REAL(r_knd), ALLOCATABLE, DIMENSION(:,:,:,:) :: flux0, flux0po,      &
-    flux0pi, q2grp0, t_xs, a_xs, psii, psij, psik, jb_in, jb_out,      &
+    flux0pi, q2grp0, t_xs, a_xs, jb_in, jb_out,                        &
     kb_in, kb_out, flkx, flky, flkz
+
+  REAL(r_knd), ALLOCATABLE, DIMENSION(:,:,:,:,:) :: psii, psij, psik
 
   REAL(r_knd), ALLOCATABLE, DIMENSION(:,:,:,:,:) :: q2grpm, fluxm, s_xs
 
@@ -100,6 +102,10 @@ MODULE solvar_module
   REAL(r_knd), DIMENSION(:,:,:,:,:,:), POINTER :: ptr_in, ptr_out
 
   TYPE(C_PTR) :: psii_ptr, psij_ptr, psik_ptr, ptr_in_ptr
+
+! Number of angles in block (should equal cache line size)
+    INTEGER(i_knd), PARAMETER :: lblk = 8
+    INTEGER(i_knd) :: nblk
 
   CONTAINS
 
@@ -210,14 +216,22 @@ MODULE solvar_module
 !   Working arrays
 !_______________________________________________________________________
 
-    psii_ptr = ALLOC( nang*ny*nz*ng )
-    CALL C_F_POINTER( psii_ptr, psii, (/ nang, ny, nz, ng /) )
+    IF ( MOD(nang,lblk) /= 0 ) THEN
+      PRINT *, "Number of angles does not divide block length"
+      STOP
+    END IF
 
-    psij_ptr = ALLOC( nang*ichunk*nz*ng )
-    CALL C_F_POINTER( psij_ptr, psij, (/ nang, ichunk, nz, ng /) )
+    ! Set number of blocks
+    nblk = nang / lblk
 
-    psik_ptr = ALLOC( nang*ichunk*ny*ng )
-    CALL C_F_POINTER( psik_ptr, psik, (/ nang, ichunk, ny, ng /) )
+    psii_ptr = ALLOC( lblk*ny*nz*nblk*ng )
+    CALL C_F_POINTER( psii_ptr, psii, (/ lblk, ny, nz, nblk, ng /) )
+
+    psij_ptr = ALLOC( lblk*ichunk*nz*nblk*ng )
+    CALL C_F_POINTER( psij_ptr, psij, (/ lblk, ichunk, nz, nblk, ng /) )
+
+    psik_ptr = ALLOC( lblk*ichunk*ny*nblk*ng )
+    CALL C_F_POINTER( psik_ptr, psik, (/ lblk, ichunk, ny, nblk, ng /) )
 
     !ALLOCATE( psii(nang,ny,nz,ng), psij(nang,ichunk,nz,ng),            &
     !  psik(nang,ichunk,ny,ng), STAT=ierr )

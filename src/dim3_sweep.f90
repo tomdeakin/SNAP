@@ -31,7 +31,7 @@ MODULE dim3_sweep_module
 
 
   SUBROUTINE dim3_sweep ( ich, id, d1, d2, d3, d4, jd, kd, oct, g, t,  &
-    iop, reqs, szreq, psii, psij, psik, qtot, ec, vdelt, ptr_in,       &
+    iop, reqs, szreq, lblk, nblk, psii, psij, psik, qtot, ec, vdelt, ptr_in,       &
     ptr_out, dinv, flux0, fluxm, jb_in, jb_out, kb_in, kb_out, wmu,    &
     weta, wxi, flkx, flky, flkz, t_xs, fmin, fmax )
 
@@ -42,7 +42,7 @@ MODULE dim3_sweep_module
 !-----------------------------------------------------------------------
 
     INTEGER(i_knd), INTENT(IN) :: ich, id, d1, d2, d3, d4, jd, kd, oct,&
-      g, t, iop, szreq
+      g, t, iop, szreq, lblk, nblk
 
     INTEGER(i_knd), DIMENSION(szreq), INTENT(INOUT) :: reqs
 
@@ -54,13 +54,13 @@ MODULE dim3_sweep_module
 
     REAL(r_knd), DIMENSION(nang,cmom), INTENT(IN) :: ec
 
-    REAL(r_knd), DIMENSION(nang,ny,nz), INTENT(INOUT) :: psii
+    REAL(r_knd), DIMENSION(lblk,ny,nz,nblk), INTENT(INOUT) :: psii
 
-    REAL(r_knd), DIMENSION(nang,ichunk,nz), INTENT(INOUT) :: psij,     &
-      jb_in, jb_out
+    REAL(r_knd), DIMENSION(lblk,ichunk,nz,nblk), INTENT(INOUT) :: psij
+    REAL(r_knd), DIMENSION(nang,ichunk,nz), INTENT(INOUT) :: jb_in, jb_out
 
-    REAL(r_knd), DIMENSION(nang,ichunk,ny), INTENT(INOUT) :: psik,     &
-      kb_in, kb_out
+    REAL(r_knd), DIMENSION(lblk,ichunk,ny,nblk), INTENT(INOUT) :: psik
+    REAL(r_knd), DIMENSION(nang,ichunk,ny), INTENT(INOUT) :: kb_in, kb_out
 
     REAL(r_knd), DIMENSION(nx,ny,nz), INTENT(IN) :: t_xs
 
@@ -87,7 +87,7 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
     INTEGER(i_knd) :: ist, iclo, ichi, jst, jlo, jhi, kst, klo, khi, k,&
-      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk, id1, a
+      j, ic, i, l, ibl, ibr, ibb, ibt, ibf, ibk, id1, a, b, bn
 
     LOGICAL(l_knd) :: receive
 
@@ -103,6 +103,7 @@ MODULE dim3_sweep_module
 ! specified"
     REAL(r_knd) :: cell_flux0
     REAL(r_knd), DIMENSION(cmom-1) :: cell_fluxm
+
 !_______________________________________________________________________
 !
 !   Set the receive control flag to true. Will set to false within the
@@ -181,13 +182,13 @@ MODULE dim3_sweep_module
       ibl = 0
       ibr = 0
       IF ( i==nx .AND. ist==-1 ) THEN
-        psii(:,j,k) = zero
+        psii(:,j,k,:) = zero
       ELSE IF ( i==1 .AND. ist==1 ) THEN
         SELECT CASE ( ibl )
           CASE ( 0 )
-            psii(:,j,k) = zero
+            psii(:,j,k,:) = zero
           CASE ( 1 )
-            psii(:,j,k) = zero
+            psii(:,j,k,:) = zero
         END SELECT
       END IF
 !_______________________________________________________________________
@@ -216,16 +217,21 @@ MODULE dim3_sweep_module
       ibt = 0
       IF ( j == jlo ) THEN
         IF ( jd==1 .AND. lasty ) THEN
-          psij(:,ic,k) = zero
+          psij(:,ic,k,:) = zero
         ELSE IF ( jd==2 .AND. firsty ) THEN
           SELECT CASE ( ibb )
             CASE ( 0 )
-              psij(:,ic,k) = zero
+              psij(:,ic,k,:) = zero
             CASE ( 1 )
-              psij(:,ic,k) = zero
+              psij(:,ic,k,:) = zero
           END SELECT
         ELSE
-          psij(:,ic,k) = jb_in(:,ic,k)
+          DO bn = 1, nblk
+            DO b = 1, lblk
+              a = b + (bn-1) * lblk
+              psij(b,ic,k,bn) = jb_in(a,ic,k)
+            END DO
+          END DO
         END IF
       END IF
 !_______________________________________________________________________
@@ -238,16 +244,21 @@ MODULE dim3_sweep_module
       ibk = 0
       IF ( k == klo ) THEN
         IF ( (kd==1 .AND. lastz) .OR. ndimen<3 ) THEN
-          psik(:,ic,j) = zero
+          psik(:,ic,j,:) = zero
         ELSE IF ( kd==2 .AND. firstz ) THEN
           SELECT CASE ( ibf )
             CASE ( 0 )
-              psik(:,ic,j) = zero
+              psik(:,ic,j,:) = zero
             CASE ( 1 )
-              psik(:,ic,j) = zero
+              psik(:,ic,j,:) = zero
           END SELECT
         ELSE
-          psik(:,ic,j) = kb_in(:,ic,j)
+          DO bn = 1, nblk
+            DO b = 1, lblk
+              a = b + (bn-1) * lblk
+              psik(b,ic,j,bn) = kb_in(a,ic,j)
+            END DO
+          END DO
         END IF
       END IF
 !_______________________________________________________________________
@@ -264,12 +275,15 @@ MODULE dim3_sweep_module
 ! not the case using the vector notation.
 !_______________________________________________________________________
 
+    blocks_loop: DO bn = 1, nblk
+
   !DIR$ VECTOR NONTEMPORAL(ptr_out)
   !DIR$ ASSUME(MOD(d1,8) == 0)
   !$OMP SIMD REDUCTION(+:cell_flux0, cell_fluxm)                                     &
   !$OMP& ALIGNED(mu,eta,xi,psii,psij,psik,ptr_in,ptr_out:64)                         &
   !$OMP& ALIGNED(psi,pc,den:64)
-      a_loop: DO a = 1, nang
+      block_loop: DO b = 1, lblk
+        a = b + (bn-1) * lblk
 !_______________________________________________________________________
 !
 !     Compute the angular source. Add the MMS contribution if necessary.
@@ -287,13 +301,13 @@ MODULE dim3_sweep_module
 !     Compute initial solution
 !_______________________________________________________________________
 
-        IF ( vdelt /= zero ) THEN
-          pc(a) = ( psi(a) + psii(a,j,k)*mu(a)*hi + psij(a,ic,k)*eta(a)*hj +         &
-            psik(a,ic,j)*xi(a)*hk + ptr_in(a,i,j,k)*vdelt ) * dinv(a,ic,j,k)
-        ELSE
-          pc(a) = ( psi(a) + psii(a,j,k)*mu(a)*hi + psij(a,ic,k)*eta(a)*hj +         &
-            psik(a,ic,j)*xi(a)*hk ) * dinv(a,ic,j,k)
-        END IF
+        !IF ( vdelt /= zero ) THEN
+          pc(a) = ( psi(a) + psii(b,j,k,bn)*mu(a)*hi + psij(b,ic,k,bn)*eta(a)*hj +         &
+            psik(b,ic,j,bn)*xi(a)*hk + ptr_in(a,i,j,k)*vdelt ) * dinv(a,ic,j,k)
+        !ELSE
+        !  pc(a) = ( psi(a) + psii(a,j,k)*mu(a)*hi + psij(a,ic,k)*eta(a)*hj +         &
+        !    psik(a,ic,j)*xi(a)*hk ) * dinv(a,ic,j,k)
+        !END IF
 !_______________________________________________________________________
 !
 !     Compute outgoing edges with diamond difference, no negative flux
@@ -304,10 +318,10 @@ MODULE dim3_sweep_module
   
           psi(a) = pc(a)
   
-          psii(a,j,k) = two*psi(a) - psii(a,j,k)
-          psij(a,ic,k) = two*psi(a) - psij(a,ic,k)
-          !IF ( ndimen == 2 )
-          psik(a,ic,j) = two*psi(a) - psik(a,ic,j)
+          psii(b,j,k,bn) = two*psi(a) - psii(b,j,k,bn)
+          psij(b,ic,k,bn) = two*psi(a) - psij(b,ic,k,bn)
+          !IF ( ndimen == 0 )
+          psik(b,ic,j,bn) = two*psi(a) - psik(b,ic,j,bn)
           !IF ( vdelt/=zero .AND. update_ptr ) THEN
           IF ( update_ptr ) THEN
             ptr_out(a,i,j,k) = two*psi(a) - ptr_in(a,i,j,k)
@@ -403,7 +417,8 @@ MODULE dim3_sweep_module
 ! The remaining statements need all the angles
 !_______________________________________________________________________
 
-      END DO a_loop
+      END DO block_loop
+      END DO blocks_loop
 !_______________________________________________________________________
 !
 ! Save the scalar flux
@@ -431,7 +446,12 @@ MODULE dim3_sweep_module
         ELSE IF ( jd==1 .AND. firsty ) THEN
           IF ( ibb == 1 ) CONTINUE
         ELSE
-          jb_out(:,ic,k) = psij(:,ic,k)
+          DO bn = 1, nblk
+            DO b = 1, lblk
+              a = b + (bn-1) * lblk
+              jb_out(a,ic,k) = psij(b,ic,k,bn)
+            END DO
+          END DO
         END IF
       END IF
 
@@ -441,7 +461,12 @@ MODULE dim3_sweep_module
         ELSE IF ( kd==1 .AND. firstz ) THEN
           IF ( ibf == 1 ) CONTINUE
         ELSE
-          kb_out(:,ic,j) = psik(:,ic,j)
+          DO bn = 1, nblk
+            DO b = 1, lblk
+              a = b + (bn-1) * lblk
+              kb_out(a,ic,j) = psik(b,ic,j,bn)
+            END DO
+          END DO
         END IF
       END IF
 !_______________________________________________________________________
@@ -449,9 +474,10 @@ MODULE dim3_sweep_module
 !     Compute dummy leakages (not used elsewhere currently)
 !_______________________________________________________________________
 
-      flkx(i+id-1,j,k) = flkx(i+id-1,j,k) + ist*SUM( wmu*psii(:,j,k) )
-      flky(i,j+jd-1,k) = flky(i,j+jd-1,k) + jst*SUM( weta*psij(:,ic,k) )
-      flkz(i,j,k+kd-1) = flkz(i,j,k+kd-1) + kst*SUM( wxi*psik(:,ic,j) )
+
+      !flkx(i+id-2,j,k) = flkx(i+id-1,j,k) + ist*SUM( wmu*psii(:,j,k) )
+      !flky(i,j+jd-1,k) = flky(i,j+jd-1,k) + jst*SUM( weta*psij(:,ic,k) )
+      !flkz(i,j,k+kd-1) = flkz(i,j,k+kd-1) + kst*SUM( wxi*psik(:,ic,j) )
 
 !_______________________________________________________________________
 !
