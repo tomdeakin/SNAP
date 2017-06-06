@@ -261,12 +261,7 @@ MODULE dim3_sweep_module
           END DO
         END IF
       END IF
-!_______________________________________________________________________
-!
-! Zero the temp scalar flux variables for this cell.
-!_______________________________________________________________________
-      cell_flux0 = zero
-      cell_fluxm = zero
+
 !_______________________________________________________________________
 !
 ! Loop over the angles in this octant. All compute is done in this loop
@@ -276,6 +271,13 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
     blocks_loop: DO bn = 1, nblk
+!_______________________________________________________________________
+!
+! Zero the temp scalar flux variables for this cell.
+!_______________________________________________________________________
+
+      cell_flux0 = zero
+      cell_fluxm = zero
 
   !DIR$ VECTOR NONTEMPORAL(ptr_out)
   !DIR$ ASSUME(MOD(d1,8) == 0)
@@ -320,7 +322,6 @@ MODULE dim3_sweep_module
   
           psii(b,j,k,bn) = two*psi(a) - psii(b,j,k,bn)
           psij(b,ic,k,bn) = two*psi(a) - psij(b,ic,k,bn)
-          !IF ( ndimen == 0 )
           psik(b,ic,j,bn) = two*psi(a) - psik(b,ic,j,bn)
           !IF ( vdelt/=zero .AND. update_ptr ) THEN
           IF ( update_ptr ) THEN
@@ -418,13 +419,12 @@ MODULE dim3_sweep_module
 !_______________________________________________________________________
 
       END DO block_loop
-      END DO blocks_loop
 !_______________________________________________________________________
 !
 ! Save the scalar flux
 !_______________________________________________________________________
 
-      IF ( oct == 1 ) THEN
+      IF ( oct == 1 .AND. bn == 1 ) THEN
         flux0(i,j,k) = cell_flux0
         DO l = 1, cmom-1
           fluxm(l,i,j,k) = cell_fluxm(l)
@@ -435,6 +435,10 @@ MODULE dim3_sweep_module
           fluxm(l,i,j,k) = fluxm(l,i,j,k) + cell_fluxm(l)
         END DO
       END IF
+
+
+
+      END DO blocks_loop
 !_______________________________________________________________________
 !
 !     Save edge fluxes (dummy if checks for unused non-vacuum BCs)
